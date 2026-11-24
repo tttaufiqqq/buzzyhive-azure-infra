@@ -55,7 +55,7 @@ Deployed on 24/11/2026:
 | Two Storage accounts (one private, one public) | The public one is used by Azure ML | The private one has no consumer yet |
 | Container Registry (Basic) | Holds the Laravel and flask-ml images | |
 | Azure Machine Learning workspace and a compute cluster that scales to zero | Trains the KNN model and registers it | Off by default (`enable_ml`). Azure ML also created a registry of its own that Terraform does not own |
-| Log Analytics, Application Insights, alert rules | Logs and alerts | Application Insights received no data, because the images send none |
+| Log Analytics, Application Insights, alert rules | Logs and alerts | Application Insights receives telemetry from the Function only. The Laravel and Flask images send none |
 | Policy (audit mode), tags, a budget | Subscription-scope guardrails | |
 | Entra groups, a managed identity, a GitHub OIDC app registration | Access without passwords | The OIDC identity exists, but no workflow uses it yet |
 
@@ -81,7 +81,7 @@ For a full explanation, see [Architecture](docs/architecture.md).
 - **The Function runs on Flex Consumption in East US, and was checked with a simulated device only.** Classic App Service plans failed on a Free Trial quota of 0 in three regions ([troubleshooting 40](docs/troubleshooting.md)). The API key is a plain app setting, and on its first start the Function replayed 20 readings that were still held in IoT Hub. The real ESP32 has not been tried.
 - **Simulated device.** The real ESP32 firmware posts plain HTTP with an API key. Talking to IoT Hub needs firmware changes, so the lab uses a Python device simulator.
 - **One environment.** There is a single `rg-hive-lab` group with no separate dev or staging.
-- **No telemetry in Application Insights.** The resource exists, but the images contain no SDK, so it received no data. Logs are read from Log Analytics instead.
+- **Application Insights has the Function's telemetry only.** The Laravel and Flask images contain no SDK, so they send nothing. Their logs are read from Log Analytics instead.
 - **The web replica is the limit.** One 0.5 vCPU `laravel-web` replica reached its CPU limit at 10 requests per second. The MySQL trigger that re-aggregates a hive's whole day on every insert is still the weak point, mitigated by a retry. See [the load test](docs/load-test.md).
 - **The ML model is retrained, not evaluated.** The Azure ML run reproduced the local result, but the data is synthetic and no held-out evaluation was run.
 - **Pusher and Telegram stay external.** They are SaaS and are called over outbound HTTPS.

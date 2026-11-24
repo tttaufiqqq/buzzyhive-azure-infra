@@ -379,6 +379,8 @@ The seeded hives get random node identifiers, so find a hive id and its node by 
 <img src="evidence/70-appinsights-live-metrics-unavailable.png" alt="Application Insights Live metrics: Not available, couldn't connect to your application, over a grey Demo chart" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 32.2. Live metrics cannot connect to an application.*
 
+**Update, 25/11/2026:** after the forwarder Function was deployed, Application Insights received its telemetry: in the three hours after the first upload, 312 traces, 4 requests and 1 exception, all from the Function. The Laravel and Flask images still send nothing, so the diagram's claim that the apps report there is still not true, and the choice between adding an exporter to each image and dropping the claim stays open.
+
 ## 33. Every `terraform plan` proposes to remove the `Consumption` workload profile
 
 **Symptom:** after a clean apply, `terraform plan` was not empty. Adding one variable (`min_replicas` on two apps) showed `6 to change` instead of 2. The extra four were the environment, `laravel-worker` and the two Jobs.
@@ -543,6 +545,7 @@ The same event created a second problem. The new registry is a Basic registry wi
 
 - `scripts/deploy-function.ps1` uploaded the zip with `az functionapp deployment source config-zip --build-remote true` and `forward_reading` was registered.
 - `scripts/simulate_device.py` sent three readings through IoT Hub. Laravel stored three predictions at the matching times (07:39:47, 07:39:52 and 07:39:56 local time), with the values that were sent, and no Telegram alert ran.
+- Application Insights recorded four invocations of `forward_reading`, all successful. The three single readings took 1.3 to 1.4 seconds each, against about 0.13 seconds for a direct post to Laravel, because the app is in East US and calls Malaysia West. The host stopped about four minutes after the last message, so the app scales to zero as designed.
 
 **Not known:** the cost (Flex is pay per use and scales to zero, an estimate, not measured), the cold start time, and whether the classic route works on a subscription that has quota.
 
@@ -557,6 +560,8 @@ The same event created a second problem. The new registry is a Basic registry wi
 **Symptom:** right after the first upload, Laravel's log showed 20 `ML prediction stored` entries within a few seconds (about 07:36 local time), about one per second, with temperatures that had not been sent that day. They came before the three readings sent for the test.
 
 **Cause:** the Event Hubs trigger starts at the beginning of the retained stream when it has no checkpoint. The hub still held the device messages from the 24/11/2026 test, because the free tier retains them for a day, so the Function forwarded all of them. Laravel stamps a reading with its arrival time, so the old readings were stored as new ones: 20 extra rows for hive 1, all `approaching`, and no Telegram alert.
+
+**What the telemetry showed:** the first invocation handled the 20 replayed messages in 20.5 seconds, about one second each. One warning was logged at that first start, `Encountered an exception while getting checkpoints for Event Hub ... used for scaling`, before any checkpoint existed. It did not appear again, and its cause was not investigated.
 
 **Impact:** harmless in this lab, but it is duplicated data.
 
