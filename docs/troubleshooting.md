@@ -395,3 +395,29 @@ The seeded hives get random node identifiers, so find a hive id and its node by 
 **Why it matters:** an empty plan after an apply is the idempotence check (see `docs/implementation-log.md`). Without this fix that check never passes, and a reviewer would learn to ignore a noisy plan. Removing a workload profile from a live environment is also not something to apply by accident.
 
 **Related:** `min_replicas` on `laravel-web` and `flask-ml` is now the variable `keep_web_and_ml_warm` (default `false`), the switch suggested in entry 31. It was set to `true` on 24/11/2026 before the load test, and both new revisions came up `Healthy` with one replica.
+
+## 34. A short stall restarts `laravel-web`: the default 1-second liveness probe
+
+**Symptom:** during the first k6 ramp, about 50 requests timed out after 15 seconds, and `laravel-web` restarted in the middle of the test.
+
+**What the system log showed (UTC):** `Probe of Liveness failed with timeout in 1 seconds` at 12:58:09, 12:58:18 and 12:58:28, then `Container laravel-web failed liveness probe, will be restarted` and `ProbeFailure` at 12:58:28. The Terraform set only the probe path, so Azure's defaults applied: a 1-second timeout and 3 failures.
+
+**Cause:** the single web replica was briefly slow, because `flask-ml` was unreachable and requests waited on it. A 1-second `/up` check then failed three times in about 20 seconds and the platform killed a container that was only busy.
+
+**Fix:** `timeout = 5`, `interval_seconds = 10`, `failure_count_threshold = 5` and `initial_delay = 10` on the liveness probes of `laravel-web` and `flask-ml` (`lab/containerapps.tf`).
+
+**Status:** the change alone did not stop the failures: the next run restarted the web container again (entry 35). The run after the app fix had probe timeouts but no restart. Why the probes time out while requests are fast is not explained. Details in [load-test.md](load-test.md).
+
+## 35. Under load, predictions fail to save: a MySQL deadlock in the predictions trigger
+
+**Symptom:** during the second ramp, 149 requests timed out and p95 rose to 6.89 s. The app log showed `production.ERROR: Application error recorded` with `error_code: prediction_persist_failed`, 81 times.
+
+**What the log said:** `SQLSTATE[40001]: Serialization failure: 1213 Deadlock found when trying to get lock; try restarting transaction` on `insert into predictions`. The count rose each minute (20, 28, 33) once the rate reached 10 requests per second.
+
+**Cause:** the trigger `trg_predictions_after_insert` re-aggregates the whole day of `sensor_logs` for the hive on every prediction insert, then upserts `hri_summary`. Concurrent readings for the same hive take overlapping locks and MySQL aborts one. This is read from the trigger code. It was not reproduced in isolation.
+
+**Fix:** in the app repo, `persistPrediction` in `MlPredictionService.php` now calls `DB::transaction(..., 3)`, so Laravel retries a transaction that MySQL aborts with a deadlock. The deadlock is raised by the insert, before the event is broadcast and before the Telegram alert is queued, so a retry cannot send either twice.
+
+**Result:** the next ramp passed all thresholds (3,299 requests, 0 failed, p95 154 ms), and the log showed no `1213` lines.
+
+**Caveat:** the retry is silent, so this shows no deadlock survived three attempts, not that none happened. The trigger still scans the whole day for every insert. An incremental summary update would remove the cause; it was not done. Details in [load-test.md](load-test.md).

@@ -6,9 +6,10 @@ Read these in order.
 2. [Docker images](docker.md): why the two images are built the way they are, with measured sizes. Read this to understand the images before changing them.
 3. [Deploy, redeploy, and destroy](deploy.md): the steps to stand it up, change it, and tear it down, with what happened on the first run. Read this before running Terraform.
 4. [Implementation log](implementation-log.md): the decisions made, the timeline, the problems found before and during the first apply, and the lessons. Read this for the story behind the decisions.
-5. [Troubleshooting](troubleshooting.md): symptom-to-fix reference. Entries 1 to 22 are expected problems; entries 23 to 33 were hit during the first apply. Not meant to be read start to finish.
+5. [Troubleshooting](troubleshooting.md): symptom-to-fix reference. Entries 1 to 22 are expected problems; entries 23 to 35 were hit during the first apply. Not meant to be read start to finish.
 6. [Cost and teardown](cost-and-teardown.md): estimated cost, the credit balance and expiry, how to check your own cost, and how to leave nothing running. Read this before you leave anything running.
 7. [Train the model in Azure ML](azure-ml.md): the plan and files for retraining the readiness model, and what a local check found about the committed model. Nothing in it has run on Azure yet.
+8. [Load test with k6](load-test.md): the ingest test run against the lab, three runs compared, what the logs showed (a probe restart and a MySQL deadlock), what was changed, and what is still unknown.
 
 The two diagrams and their editable source are in [`architecture/`](architecture/). Screenshots from the first deployment are in [`evidence/`](evidence/) and are used in the deploy, troubleshooting, Docker, architecture, cost and implementation log articles.
 
