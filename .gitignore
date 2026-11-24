@@ -1,0 +1,40 @@
+# Terraform: local state, plans and working directories.
+# Keep .terraform.lock.hcl committed so provider versions stay pinned.
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+*.tfplan
+tfplan
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Variable files hold real values and secrets. Only the examples are committed.
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+backend.hcl
+!backend.hcl.example
+
+# draw.io backups and temp files
+.*.bkp
+.*.dtmp
+*.bkp
+*.dtmp
+*.orig.drawio
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local logs and scratch files
+*.log
+.claude/

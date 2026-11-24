@@ -1,0 +1,92 @@
+variable "subscription_id" {
+  type        = string
+  default     = null
+  description = "Azure subscription ID. If null, ARM_SUBSCRIPTION_ID is used."
+}
+
+variable "use_oidc" {
+  type        = bool
+  default     = false
+  description = "Sign in with an OIDC token (GitHub Actions). Leave false for az login."
+}
+
+variable "project" {
+  type    = string
+  default = "hive"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{2,8}$", var.project))
+    error_message = "Use 2 to 8 lowercase letters or digits so storage and registry names stay valid."
+  }
+}
+
+variable "env" {
+  type    = string
+  default = "lab"
+}
+
+variable "alert_email" {
+  type        = string
+  description = "Address that receives the alert-rule notifications."
+}
+
+# ---------- Feature toggles ----------
+
+variable "enable_iot" {
+  type        = bool
+  default     = true
+  description = "IoT Hub (free tier F1; only one per subscription)."
+}
+
+variable "enable_function" {
+  type        = bool
+  default     = true
+  description = "Azure Function that forwards IoT Hub messages to Laravel. Needs enable_iot. Consumption (Y1) quota can be zero on a new subscription."
+}
+
+variable "enable_ml" {
+  type        = bool
+  default     = false
+  description = "Azure Machine Learning workspace and a compute cluster that scales to zero."
+}
+
+variable "ml_vm_size" {
+  type        = string
+  default     = "Standard_DS3_v2"
+  description = "Training VM size. Check vCPU quota for the family first."
+}
+
+# ---------- Containers ----------
+
+variable "images" {
+  type = object({
+    laravel = optional(string)
+    flask   = optional(string)
+  })
+  default     = {}
+  description = "Full image references in ACR. While null, a placeholder image is deployed so the platform can be tested before the real images exist."
+}
+
+variable "mysql_database" {
+  type    = string
+  default = "buzzyhive"
+}
+
+variable "mysql_admin_login" {
+  type    = string
+  default = "hiveadmin"
+}
+
+variable "app_secrets" {
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+  description = "Extra app secrets stored in Key Vault, keyed by lowercase-hyphen name, for example pusher-app-secret. Each becomes an env var in the Laravel apps, upper-cased with underscores."
+}
+
+variable "function_api_key" {
+  type        = string
+  default     = null
+  sensitive   = true
+  description = "API key the Function sends to /api/sensor-data. Required when enable_function is true."
+}

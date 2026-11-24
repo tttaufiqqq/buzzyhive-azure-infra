@@ -1,0 +1,10 @@
+subscription_id   = "00000000-0000-0000-0000-000000000000"
+alert_emails      = ["you@example.com"]
+budget_amount     = 100
+budget_start_date = "2026-11-01T00:00:00Z" # first day of the current month
+github_owner      = "your-github-user"
+github_repo       = "buzzyhive-azure-infra"
+
+# From the bootstrap outputs, so the pipeline can read and write state:
+# state_resource_group_name  = "rg-hive-iac"
+# state_storage_account_name = "sthivetfxxxxx"

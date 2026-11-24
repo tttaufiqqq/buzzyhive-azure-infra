@@ -1,0 +1,26 @@
+subscription_id = "00000000-0000-0000-0000-000000000000"
+alert_email     = "you@example.com"
+
+# Feature toggles. Apply in phases and switch off what you do not need today.
+enable_iot      = true
+enable_function = true
+enable_ml       = false
+
+# Leave images unset to deploy a placeholder first. Set them after pushing to ACR.
+# images = {
+#   laravel = "acrhivexxxxx.azurecr.io/laravel:latest"
+#   flask   = "acrhivexxxxx.azurecr.io/flask-ml:latest"
+# }
+
+# Secrets (keep these out of git; *.tfvars is ignored). Each key becomes a Key
+# Vault secret and an environment variable: app-key -> APP_KEY.
+# function_api_key must equal iot-api-key, the key the Function sends to /api/sensor-data.
+# function_api_key = "..."
+# app_secrets = {
+#   app-key            = "base64:..."   # php artisan key:generate --show
+#   iot-api-key        = "..."
+#   pusher-app-id      = "..."
+#   pusher-app-key     = "..."
+#   pusher-app-secret  = "..."
+#   telegram-bot-token = "..."
+# }
