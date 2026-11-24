@@ -56,6 +56,12 @@ variable "enable_function" {
   description = "Azure Function app that forwards IoT Hub messages to Laravel. Needs enable_iot. Off by default: this repository creates the app but not the function code yet, and Consumption (Y1) quota can be zero on a new subscription."
 }
 
+variable "keep_web_and_ml_warm" {
+  type        = bool
+  default     = false
+  description = "Run one replica of laravel-web and flask-ml at all times (min_replicas = 1) so cold starts do not skew a load test. Costs a little more while the lab is up."
+}
+
 variable "enable_ml" {
   type        = bool
   default     = false

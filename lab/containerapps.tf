@@ -1,4 +1,10 @@
 resource "azurerm_container_app_environment" "this" {
+  # Azure adds a "Consumption" workload profile to every consumption-only environment;
+  # the provider would otherwise plan to remove it on every run.
+  lifecycle {
+    ignore_changes = [workload_profile]
+  }
+
   name                       = local.names.acae
   resource_group_name        = local.rg
   location                   = local.location
@@ -47,6 +53,10 @@ locals {
 # ---------- laravel-web: external ingress ----------
 
 resource "azurerm_container_app" "web" {
+  lifecycle {
+    ignore_changes = [workload_profile_name] # set by Azure to "Consumption"
+  }
+
   name                         = "laravel-web"
   resource_group_name          = local.rg
   container_app_environment_id = azurerm_container_app_environment.this.id
@@ -83,7 +93,7 @@ resource "azurerm_container_app" "web" {
   }
 
   template {
-    min_replicas = 0
+    min_replicas = var.keep_web_and_ml_warm ? 1 : 0
     max_replicas = 1 # hive images and the thesis PDF live on container disk; see docs/docker.md
 
     container {
@@ -130,6 +140,10 @@ resource "azurerm_container_app" "web" {
 # ---------- laravel-worker: queue, no ingress, always on ----------
 
 resource "azurerm_container_app" "worker" {
+  lifecycle {
+    ignore_changes = [workload_profile_name] # set by Azure to "Consumption"
+  }
+
   name                         = "laravel-worker"
   resource_group_name          = local.rg
   container_app_environment_id = azurerm_container_app_environment.this.id
@@ -195,6 +209,10 @@ resource "azurerm_container_app" "worker" {
 # ---------- flask-ml: internal ingress only ----------
 
 resource "azurerm_container_app" "flask" {
+  lifecycle {
+    ignore_changes = [workload_profile_name] # set by Azure to "Consumption"
+  }
+
   name                         = "flask-ml"
   resource_group_name          = local.rg
   container_app_environment_id = azurerm_container_app_environment.this.id
@@ -222,7 +240,7 @@ resource "azurerm_container_app" "flask" {
   }
 
   template {
-    min_replicas = 0
+    min_replicas = var.keep_web_and_ml_warm ? 1 : 0
     max_replicas = 2
 
     container {
@@ -249,6 +267,10 @@ resource "azurerm_container_app" "flask" {
 # Neither runs inside the worker, or every replica would repeat them.
 
 resource "azurerm_container_app_job" "scheduler" {
+  lifecycle {
+    ignore_changes = [workload_profile_name] # set by Azure to "Consumption"
+  }
+
   count                        = local.use_placeholders ? 0 : 1 # the placeholder image never exits
   name                         = "laravel-schedule"
   resource_group_name          = local.rg
@@ -320,6 +342,10 @@ resource "azurerm_container_app_job" "scheduler" {
 # Started by the pipeline before a new revision takes traffic:
 #   az containerapp job start --name laravel-migrate --resource-group <rg>
 resource "azurerm_container_app_job" "migrate" {
+  lifecycle {
+    ignore_changes = [workload_profile_name] # set by Azure to "Consumption"
+  }
+
   count                        = local.use_placeholders ? 0 : 1 # the placeholder image never exits
   name                         = "laravel-migrate"
   resource_group_name          = local.rg
