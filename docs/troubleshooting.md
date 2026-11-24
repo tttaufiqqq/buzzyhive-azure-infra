@@ -396,6 +396,16 @@ The seeded hives get random node identifiers, so find a hive id and its node by 
 
 **Related:** `min_replicas` on `laravel-web` and `flask-ml` is now the variable `keep_web_and_ml_warm` (default `false`), the switch suggested in entry 31. It was set to `true` on 24/11/2026 before the load test, and both new revisions came up `Healthy` with one replica.
 
+<img src="evidence/92-terraform-fmt-validate-lab.png" alt="terraform fmt check listing only terraform.tfvars, then terraform validate succeeding" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 33.1. `terraform fmt -check` lists only the git-ignored `terraform.tfvars`, and `terraform validate` succeeds (after a typo on the first try).*
+
+<img src="evidence/93-plan-six-changes-consumption-drift.png" alt="terraform plan listing six resources to update in place" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 33.2. The plan after adding one variable listed six in-place changes instead of two.*
+
+<img src="evidence/94-plan-diff-workload-profile-noise.png" alt="terraform plan diff showing the Consumption workload profile being removed from apps, jobs and the environment" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 33.3. The diff: `workload_profile_name = "Consumption" -> null` on every app and job, and the workload profile removed from the environment, next to the intended `min_replicas` change.*
+
+
 ## 34. A short stall restarts `laravel-web`: the default 1-second liveness probe
 
 **Symptom:** during the first k6 ramp, about 50 requests timed out after 15 seconds, and `laravel-web` restarted in the middle of the test.
@@ -421,3 +431,88 @@ The seeded hives get random node identifiers, so find a hive id and its node by 
 **Result:** the next ramp passed all thresholds (3,299 requests, 0 failed, p95 154 ms), and the log showed no `1213` lines.
 
 **Caveat:** the retry is silent, so this shows no deadlock survived three attempts, not that none happened. The trigger still scans the whole day for every insert. An incremental summary update would remove the cause; it was not done. Details in [load-test.md](load-test.md).
+
+## 36. Telegram alerts do not arrive: the saved chat ID had a leading space
+
+**Symptom:** three `ready` readings returned `201` and were classified `ready`, but no Telegram message arrived.
+
+**What the worker log showed:** `App\Jobs\SendTelegramAlert` ran and then failed with `telegram_delivery_failed` and **status 400**, four seconds after the first attempt. The job's own log line shows the chat ID it used, and that value had a space in front of the number. The queue then retried (`tries = 3`, delays of 60 and 300 seconds) and failed the same way each time.
+
+**What this ruled out:** the queue and the worker (the jobs ran), the model and the guardrails (the predictions were `ready`), and the bot token (Telegram answered with a 400, not a 401). The chat with the bot already held older alerts, so the bot had been started.
+
+**Cause:** `users.telegram_id` was saved as `" 123456789"` (with a leading space), most likely pasted that way into the profile field. Telegram rejects the request. Note that the app logs only "Unable to deliver the Telegram alert right now" and the status code, so Telegram's own explanation is not in the log. A bot that was never started can also return a 400 ("chat not found"), so the status alone does not tell the two apart.
+
+**Fix:** trim the stored value, in `php artisan tinker`:
+
+```php
+$u = App\Models\Hive::find(1)->user;
+$u->update(['telegram_id' => trim($u->telegram_id)]);
+```
+
+**Result:** the three queued alerts delivered on their last retry, about 6 minutes after the readings. A fresh `ready` reading and a fresh `nearly_ready` reading each produced one message, and each alert job took 0.7 to 0.8 seconds. One alert per reading, with no duplicates.
+
+**Not done (app repo):** trim or validate `telegram_id` where it is saved (`ProfileUpdateRequest` and `AcceptInviteController` accept it unchecked), and add Telegram's `description` field to the failure log so the cause shows up directly.
+
+<img src="evidence/116-tinker-telegram-id-fix.png" alt="Portal console showing the owner's telegram_id null, then set by hand with the value covered" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 36.1. The hive owner's `telegram_id` was `null`, then saved by hand (the value is covered). This is the save that introduced the leading space.*
+
+<img src="evidence/117-simulate-ready-three-readings.png" alt="Simulator sending three ready readings to hive 1, all returning 201" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 36.2. Three `ready` readings sent to hive 1, all `201`.*
+
+<img src="evidence/118-telegram-ready-alerts.png" alt="Telegram chat with the BuzzyHive bot showing ready-to-harvest alerts" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 36.3. Telegram: the first alert (predicted 22:26, delivered at 22:32 by a queue retry) and three more from a second run of `--profile ready --count 3` at 22:34. The chat list on the left is covered.*
+
+<img src="evidence/119-simulate-nearly-ready-readings.png" alt="Simulator sending nearly_ready readings, both returning 201" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 36.4. The `nearly_ready` profile was sent twice, one reading each time, both `201`.*
+
+<img src="evidence/120-telegram-nearly-ready-alerts.png" alt="Telegram chat showing two nearly-ready alerts" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 36.5. Two `nearly_ready` alerts, one per reading. The logs showed two separate readings 13 seconds apart, so this is one alert per reading, not a duplicate.*
+
+
+## 37. Azure ML creates its own registry, and the next plan wants to replace the workspace
+
+**Symptom:** after the first Azure ML job, `terraform plan` (changing only an image tag) showed `Plan: 2 to add, 1 to change, 2 to destroy`. Two resources said `must be replaced`: `azurerm_machine_learning_workspace.this[0]` and `azurerm_machine_learning_compute_cluster.train[0]`.
+
+**What the plan said:** on the workspace, `container_registry_id = ".../registries/<name>" -> null # forces replacement`. On the cluster, `machine_learning_workspace_id ... -> (known after apply) # forces replacement`, because it depends on the workspace.
+
+**Cause:** when the job built its first environment image, Azure ML created a Container Registry of its own in `rg-hive-lab` and attached it to the workspace. The Terraform does not declare that attribute, so the provider planned to remove it, and removing it forces a new workspace. Applying would have deleted the workspace, the registered model, the job history and the cluster.
+
+The same event created a second problem. The new registry is a Basic registry with the **admin user enabled**, no tags, and **no entry in Terraform state**. `terraform destroy` will not remove it, so it would keep billing after the lab is gone.
+
+**How it was found:** `az acr list -g rg-hive-lab` showed a second registry, created when the job started building, and the plan listed the replacement. The `--only` filter on the first plan hid it, because it matched "will be" and not "must be": use `(will|must) be|forces replacement`.
+
+**Fix:** `lifecycle { ignore_changes = [container_registry_id] }` on the workspace in `lab/ml.tf`. The next plan showed only the intended single in-place change. At teardown, delete the registry by hand: `az acr delete -n <name> -g rg-hive-lab --yes`. `scripts/down.ps1` now lists anything still inside the resource group after the destroy.
+
+**Status:** fixed in the Terraform. The registry itself is still there until the teardown. Do not delete it while a job is using it.
+
+<img src="evidence/124-acr-list-azureml-created-registry.png" alt="az acr list showing a second registry created by Azure ML with admin enabled" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 37.1. `az acr list`: the second registry, created at 14:50:55 UTC with the admin user enabled, next to `acrhiveci1yu`.*
+
+
+## 38. The first Azure ML job fails with `Unable to get image details`
+
+**Symptom:** the job was submitted and failed within about a minute. The error was `Unable to get image details : Image mcr.microsoft.com/azureml/openmpi4.1.2-ubuntu20.04:latest for environment CliV2AnonymousEnvironment does not exist in registry`, status 400, target `GetImageDetails`.
+
+**Cause:** `azureml/train-job.yml` pinned a base image tag that no longer exists. This was an error in the job file, written without checking the tag against the registry. It was not a default of the CLI.
+
+**Fix:** list the tags at `mcr.microsoft.com/v2/azureml/<image>/tags/list` before pinning. `openmpi4.1.0-ubuntu22.04` had 118 tags, the newest dated 22/11/2026, so the job now uses `mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest`. The second submit completed.
+
+**Note:** the environment image was built by a `prepare_image` job running on the cluster in about 6 minutes, not by ACR Tasks, which is not offered in Malaysia West.
+
+<img src="evidence/123-azureml-jobs-failed-and-preparing.png" alt="Azure ML Studio job list with the first job failed and the second preparing" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 38.1. The two jobs: the first `Failed` at 10:48 PM, the second `Preparing` at 10:51 PM. The account name and the subscription are covered.*
+
+
+## 39. The Azure ML CLI cannot stream the image-build log
+
+**Symptom:** `submit-training.ps1` printed `Streaming azureml-logs/20_image_build_log.txt` and then an XML error from the storage account: `AuthenticationFailed`, `Server failed to authenticate the request ... Signature did not match`.
+
+**What it did not affect:** the job itself. Its status moved on to `Preparing`, then to `Completed`, and the model downloaded without trouble.
+
+**Workaround:** read the job in Azure ML Studio (**Outputs + logs**), or poll `az ml job show -n <job> -w <workspace> -g rg-hive-lab --query status -o tsv`. `az ml job download` also works for the logs.
+
+**Status: cause not found.** Downloaded logs contain Studio links that include the subscription ID, so keep them outside the repository.
+
+<img src="evidence/127-azureml-submit-completed-stream-error.png" alt="submit script output showing an XML AuthenticationFailed error followed by Final status Completed" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 39.1. The submit script's output: the XML `AuthenticationFailed` error from the storage account while streaming, then `Final status: Completed`. The subscription ID in the link is covered.*
+
