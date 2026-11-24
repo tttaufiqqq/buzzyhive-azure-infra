@@ -358,4 +358,4 @@ Destroy only the `lab` root after each session. Keep `foundation` and `bootstrap
 cd lab && terraform destroy
 ```
 
-If locks were ever enabled, set `enable_locks = false` and apply `foundation` first, or the destroy fails. When you are completely done, destroy `foundation`, then delete `rg-hive-iac` by hand. See [Cost and teardown](cost-and-teardown.md).
+If locks were ever enabled, set `enable_locks = false` and apply `foundation` first, or the destroy fails. When you are completely done, destroy `foundation`, then `bootstrap`, in that order, after deleting anything Terraform did not create (such as the registry Azure ML makes). See [Teardown and redeploy](teardown-and-redeploy.md) and [Cost and teardown](cost-and-teardown.md).
