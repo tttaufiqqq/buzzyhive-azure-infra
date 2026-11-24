@@ -153,3 +153,9 @@ az monitor activity-log list --resource-group rg-hive-lab --offset 1h -o table
 **Symptom:** `php artisan migrate` stops on the `HRI_Summary` trigger with `SQLSTATE[HY000]: General error: 1419 You do not have the SUPER privilege and binary logging is enabled`.
 
 **Fix:** this was hit locally (it is why the compose file starts MySQL with `--log-bin-trust-function-creators=1`) and would hit Azure the same way. Flexible Server keeps binary logging on and its admin has no SUPER privilege. `lab/data.tf` sets the server parameter `log_bin_trust_function_creators` to `ON`.
+
+## 22. The budget cannot be created
+
+**Symptom:** the `foundation` apply fails on `azurerm_consumption_budget_subscription`, for example with a message that the subscription type is not supported.
+
+**Fix:** this is expected to be possible on a free trial, but I have not confirmed it. Set `enable_budget = false` in `foundation/terraform.tfvars` and apply again. The budget only sends emails, so check your credit by hand under Cost Management, then Credits.

@@ -79,7 +79,7 @@ IoT Hub, the Function and Azure ML are managed PaaS outside the VNet. The Functi
 
 | Area | What it contains |
 |---|---|
-| Governance | Azure Policy (allowed regions, required tags, in audit mode so it never blocks an apply), resource locks, tags `env=lab` and `project=hive`, a budget with alerts at 75% and 90% of $100 (below the $135.68 credit left), and Defender for Cloud on the free tier |
+| Governance | Azure Policy (allowed regions, required tags, in audit mode so it never blocks an apply), resource locks, tags `env=lab` and `project=buzzyhive`, a budget with alerts at 75% and 90% of $100 (below the $135.68 credit left), and Defender for Cloud on the free tier |
 | Identity | Entra groups `grp-hive-admins` and `grp-hive-readers`, a user-assigned managed identity for the apps, and an app registration with a GitHub OIDC federated credential |
 | DevOps | GitHub repository, GitHub Actions, Terraform with plan before apply, and a storage account holding state in `rg-hive-iac` |
 | Operations | Log Analytics, Application Insights, alert rules (no data for 15 minutes, 5xx responses, database CPU), Activity Log, MySQL automated backups, and optional Azure Load Testing |
@@ -109,7 +109,7 @@ Role assignments:
 | Terraform roots | `bootstrap` (state, local), `foundation` (governance, identity), `lab` (network, data, workloads) | Only `lab` is destroyed after each session. Fewer state files than four separate stacks. |
 | Locks | Behind a variable, off in the lab | A `CanNotDelete` lock makes `terraform destroy` fail, so keep locks in the `foundation` root |
 | ML serving | Keep `flask-ml` in Container Apps, use Azure ML for training | A managed online endpoint bills all the time and a KNN on small data does not need it |
-| Region | Southeast Asia | Malaysia West has fewer services. Check MySQL and ML vCPU quota first. |
+| Region | Malaysia West, with the IoT Hub in Southeast Asia | The provider list for `Microsoft.Devices` has no Malaysia West, so the IoT Hub goes to the nearest region that has it. It sits outside the VNet and devices reach it over the internet, so the split costs only a little cross-region traffic. The other services were listed for Malaysia West. Check MySQL and ML vCPU quota first. Malaysia West is also where the reference project ran, while Southeast Asia had VM capacity limits on the same account. |
 
 ## 7. What stays outside Azure
 

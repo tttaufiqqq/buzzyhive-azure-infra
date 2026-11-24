@@ -38,7 +38,7 @@ The budget in the `foundation` root alerts at 75% and 90% of $100, which sits be
 1. In the Azure Portal, open **Cost Management**, then **Cost analysis**.
 2. Set the scope to your subscription and a date range that covers your deployment.
 3. Group by **Resource group**, then by **Service name** and **Location**.
-4. Filter on the tag `project = hive` to show only this project.
+4. Filter on the tag `project = buzzyhive` to show only this project.
 5. Data lags by 8 to 24 hours, so a deployment you just destroyed may not show its full cost yet.
 
 ## 3. Teardown
@@ -48,7 +48,7 @@ MySQL, the registry and private endpoints bill hourly, so delete the environment
 After the destroy, confirm nothing is left:
 
 ```bash
-az resource list --tag project=hive -o table
+az resource list --tag project=buzzyhive -o table
 az group list -o table
 ```
 

@@ -14,6 +14,19 @@ This is a learning project. It designs how to run [BuzzyHive 2.0](https://github
 - **Approach:** three container apps (`laravel-web`, `laravel-worker`, `flask-ml`) in a VNet, MySQL Flexible Server on a private subnet, IoT Hub with a Function in front of Laravel, and Azure ML for training. Everything is defined in Terraform and deployed from GitHub Actions.
 - **Run time:** the environment is meant to run for about a day, then be destroyed.
 
+## Status
+
+| Part | State |
+|---|---|
+| Architecture diagram and documentation | Done |
+| Terraform (`bootstrap`, `foundation`, `lab`) | Scaffolded. `validate` passes and CI (fmt, validate, tflint) is green |
+| Preflight against a real subscription | Passed (providers, MySQL SKU, quota, IoT Hub region) |
+| Docker images and local Compose stack | Built and tested end to end. 168 app tests pass |
+| Apply to Azure | **Not run yet** |
+| IoT Hub forwarder function, CI plan and apply | Not written yet |
+
+What was found along the way, and what is still open, is in the [implementation log](docs/implementation-log.md).
+
 ## 1. Learning goals
 
 - Containerize a Laravel + React app and a Flask ML API, and run them on Azure Container Apps.
@@ -48,6 +61,7 @@ For a full explanation, see [Architecture](docs/architecture.md).
 
 - **Scaffolded, not applied.** The three Terraform roots validate, but none of the steps in [Deploy](docs/deploy.md) have been run, so the first apply will likely turn up provider or quota errors.
 - **Synthetic ML data.** The KNN model is trained on a synthetic dataset, so Azure ML here is a pipeline exercise, not a modelling one.
+- **No Function code.** The Function app can be created (`enable_function`), but the function that forwards IoT Hub messages to Laravel is not written yet, so the IoT Hub path is incomplete. It is off by default.
 - **Simulated device.** The real ESP32 firmware posts plain HTTP with an API key. Talking to IoT Hub needs firmware changes, so the lab uses a Python device simulator.
 - **One environment.** There is a single `rg-hive-lab` group with no separate dev or staging.
 - **Pusher and Telegram stay external.** They are SaaS and are called over outbound HTTPS.
@@ -96,7 +110,31 @@ The commands for each root are in [Deploy, redeploy, and destroy](docs/deploy.md
 
 The reasoning behind each is in [Architecture](docs/architecture.md#6-design-decisions).
 
-## 6. Related resources
+## 6. Results so far
+
+Nothing has run on Azure yet. These come from local builds, CI and read-only commands against the subscription. Measured on one laptop (Docker 29.7 in WSL2), one run each.
+
+| Check | Result |
+|---|---|
+| Laravel image | 333 MB on Alpine (a Debian build is 900 MB) |
+| ML image | 452 MB (533 MB before removing bundled test folders) |
+| Alpine against Debian, 0.5 CPU | `/up` 77.5 against 88.9 requests per second, `/login` 32.2 against 35.7, memory 51 MB for both |
+| Local stack | MySQL, flask-ml, migrate, web, worker and scheduler run end to end. A sensor POST returns 201 in 0.16 s warm |
+| App tests with the changed code | 168 passed, 842 assertions |
+| CI on the first push | `fmt`, `validate` and `tflint` green for all three roots |
+| Preflight on the real subscription | Providers registered, MySQL B1ms offered in Malaysia West, 4 vCPU quota, IoT Hub listed for Southeast Asia |
+
+Why the images are built this way: [Docker images](docs/docker.md). The full list of 13 problems found before deploying, and how each was found: [Implementation log](docs/implementation-log.md#4-problems-found-before-deployment).
+
+## 7. What I learned
+
+- **Run it before reasoning about it.** Building the images exposed problems a design review had missed: a MySQL trigger that needs a server parameter, Pusher values that must exist at build time, and an app that does not trust proxies.
+- **Check an assumption before it reaches a diagram.** "Malaysia West has fewer services" sat in the docs until a one-line provider query disproved it. Only the IoT Hub is missing there.
+- **Test the checking tools.** The preflight script had two bugs that only showed against the real subscription.
+- **Measure the choices you can.** Alpine saved 567 MB for about 10 to 13 percent less throughput on the web image, and failed outright for the ML image because the numeric packages have no musl wheels.
+- **Private data planes break Terraform.** With public access off, secrets and file shares fail with 403 from outside the VNet, so those writes go through ARM with `azapi`. This is from review and not yet confirmed on Azure.
+
+## 8. Related resources
 
 - [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readiness-Prediction): the application this infrastructure hosts
 - [Azure Container Apps documentation](https://learn.microsoft.com/en-us/azure/container-apps/)

@@ -10,8 +10,8 @@ This article shows the planned steps to deploy the infrastructure, change it, an
 - Sign in with `az login`, and select your subscription with `az account set --subscription "<name>"`.
 - Run the preflight script (planned: `scripts/preflight.sh`). It should do three things:
   - Register the resource providers a new subscription often lacks: `Microsoft.App`, `Microsoft.Devices`, `Microsoft.DBforMySQL`, `Microsoft.MachineLearningServices`, `Microsoft.OperationalInsights` and `Microsoft.Cdn`.
-  - Check quota with `az vm list-usage --location southeastasia -o table`.
-  - Confirm MySQL B1ms is offered with `az mysql flexible-server list-skus --location southeastasia -o table`.
+  - Check quota with `az vm list-usage --location malaysiawest -o table`.
+  - Confirm MySQL B1ms is offered with `az mysql flexible-server list-skus --location malaysiawest -o table`.
 - Check that you can create Entra groups and app registrations in your tenant. A university tenant may block this.
 - Check your remaining credit and its expiry date in Cost Management, then Credits ($135.68 when this was written).
 - Build the app images locally first (see [Build the images](#3-build-the-images)).
@@ -55,21 +55,88 @@ The Pusher key and cluster are compiled into the JavaScript, so they are build a
 
 ## 4. Deploy
 
-Apply the roots in order. `foundation` and `lab` read the outputs of the one before.
+Run these in order. Each step says what to check before moving on, and what usually goes wrong.
+
+### 4.1 Preflight
 
 ```bash
-cd bootstrap  && terraform init && terraform apply
-cd ../foundation && terraform init && terraform apply
-cd ../lab     && terraform init && terraform apply
+az login
+az account set --subscription "<name>"
+scripts/preflight.sh malaysiawest southeastasia
 ```
 
-1. **bootstrap:** the `rg-hive-iac` resource group and the state storage account. Copy its backend settings into the other two roots.
-2. **foundation:** subscription-scope Policy (audit mode), tags, a $100 budget and Defender, then Entra groups, the managed identity and the GitHub OIDC credential. Leave `enable_locks = false` in the lab. Save the client ID and tenant ID as GitHub repository variables.
-3. **lab:** VNet, MySQL, Key Vault, both storage accounts, ACR and the three private DNS zones first. Push the images to ACR, then the Container Apps, Jobs, IoT Hub, Function and Azure ML workspace.
+Run it again until every resource provider says `ok` (registration takes a few minutes). A quota or SKU line showing `0` or no result means that feature will fail. Switch it off with an `enable_*` variable, or request quota.
 
-Use `enable_*` variables to apply in phases and skip parts you do not need that session, such as Azure ML or Front Door.
+### 4.2 bootstrap (state storage)
 
-After the first deploy, the GitHub Actions pipeline runs `terraform fmt -check`, `validate` and `plan` on every pull request, and applies from a protected environment. It also builds images, pushes to ACR and updates the Container Apps. It runs the `migrate` Job before the new revision takes traffic.
+```bash
+cd bootstrap
+cp terraform.tfvars.example terraform.tfvars      # set subscription_id
+terraform init && terraform plan
+terraform apply
+terraform output -raw backend_hcl
+```
+
+It also gives your signed-in user `Storage Blob Data Contributor` on the state account. The other roots read state with Azure AD auth, and Owner or Contributor alone cannot. The assignment can take several minutes to take effect, so `terraform init` in the next step may fail with a 403 at first. Wait and retry.
+
+### 4.3 foundation (resource group, governance, identity)
+
+```bash
+cd ../foundation
+cp terraform.tfvars.example terraform.tfvars      # set alert_emails, budget_start_date, github_owner, github_repo
+cp backend.hcl.example backend.hcl                # paste the bootstrap output, keep key = "foundation.tfstate"
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+```
+
+- `budget_start_date` must be the first day of a month, for example `2026-11-01T00:00:00Z`. If the apply says budgets are not supported on your subscription type, set `enable_budget = false` ([troubleshooting](troubleshooting.md#22-the-budget-cannot-be-created)).
+- Entra groups and the app registration need directory rights. If the plan fails on `azuread`, see [troubleshooting](troubleshooting.md#5-entra-groups-or-app-registration-cannot-be-created).
+- Save the three outputs as GitHub repository variables (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`). Nothing uses them until a plan or apply job is added to the workflow.
+
+### 4.4 lab, first apply (placeholder images)
+
+```bash
+cd ../lab
+cp terraform.tfvars.example terraform.tfvars      # set subscription_id, alert_email
+cp backend.hcl.example backend.hcl                # key = "lab.tfstate"
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+```
+
+With `images` unset, the apps run Microsoft's quickstart image, so the platform can be checked before the real images exist. The scheduler and migrate Jobs are not created yet, because the placeholder never exits.
+
+Expected duration: MySQL and the Container Apps environment are the slow parts. I have no measurement; record yours in the [implementation log](implementation-log.md).
+
+Things that commonly fail here, and the fix:
+
+- **A Container App cannot read a Key Vault secret** right after the role assignment. Role assignments take minutes to propagate. Re-run `terraform apply`.
+- **IoT Hub free tier already exists.** Only one `F1` hub is allowed per subscription. Set `enable_iot = false` or delete the other hub.
+- **A SKU or quota error** on MySQL. Check the preflight output, change region or request quota.
+
+### 4.5 lab, second apply (real images)
+
+Build and push the images (see section 3), set `images`, `app_secrets` and `function_api_key` in `terraform.tfvars`, then:
+
+```bash
+terraform apply
+```
+
+This switches the apps to the real images and creates the scheduler and migrate Jobs. Start the migrate Job once before opening the site:
+
+```bash
+az containerapp job start --name laravel-migrate --resource-group rg-hive-lab
+```
+
+### 4.6 Not built yet
+
+- **Function code.** `enable_function` creates the Function app, but this repository does not contain the function that forwards IoT Hub messages to Laravel. It is off by default. Until it exists, readings reach Laravel only through the app's own HTTP endpoint, so the simulator should post there.
+- **Front Door, the load test and the plan and apply jobs in CI.**
+
+After the first deploy, the GitHub Actions workflow runs `terraform fmt -check`, `validate` and `tflint`. Plan and apply jobs are not added yet.
+
+Use `enable_*` variables to apply in phases and skip parts you do not need that session.
 
 Record the duration of each apply, and the real errors you hit, in the [implementation log](implementation-log.md) and [troubleshooting](troubleshooting.md).
 
