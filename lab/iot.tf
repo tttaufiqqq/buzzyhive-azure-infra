@@ -1,6 +1,23 @@
 # IoT Hub (free tier) and the Function that forwards each message to Laravel.
 # IoT Hub and the Function sit outside the VNet; the Function calls the public
 # laravel-web ingress with the API key.
+#
+# This file creates the Function app. The function itself is the code in functions/forwarder/,
+# which scripts/deploy-function.ps1 uploads after the apply (enable_function = true).
+#
+# Two ways to host it, chosen with function_hosting:
+#   "flex" (default) Flex Consumption (FC1) and azurerm_function_app_flex_consumption. It has its
+#                    own regional memory quota. It worked on the Free Trial subscription on
+#                    25/11/2026, in East US (function_location = "eastus").
+#   "plan"           a classic App Service plan (B1, Y1, ...) and azurerm_linux_function_app. On the
+#                    Free Trial subscription this failed: Y1 was refused in Malaysia West, and the
+#                    quota for B1 and Y1 instances was 0 in Southeast Asia and East US.
+
+locals {
+  function_enabled = var.enable_iot && var.enable_function
+  function_plan    = local.function_enabled && var.function_hosting == "plan"
+  function_flex    = local.function_enabled && var.function_hosting == "flex"
+}
 
 resource "azurerm_iothub" "this" {
   count               = var.enable_iot ? 1 : 0
@@ -18,28 +35,30 @@ resource "azurerm_iothub" "this" {
 }
 
 resource "azurerm_iothub_shared_access_policy" "function" {
-  count               = var.enable_iot && var.enable_function ? 1 : 0
+  count               = local.function_enabled ? 1 : 0
   name                = "function"
   resource_group_name = local.rg
   iothub_name         = azurerm_iothub.this[0].name
   service_connect     = true
 }
 
+# ---------- hosting "plan": a classic App Service plan ----------
+
 resource "azurerm_service_plan" "function" {
-  count               = var.enable_iot && var.enable_function ? 1 : 0
+  count               = local.function_plan ? 1 : 0
   name                = local.names.plan
   resource_group_name = local.rg
-  location            = local.location
+  location            = coalesce(var.function_location, local.location)
   os_type             = "Linux"
-  sku_name            = "Y1" # Consumption. Quota can be zero on a new subscription.
+  sku_name            = var.function_plan_sku # B1 by default
   tags                = local.tags
 }
 
 resource "azurerm_linux_function_app" "forwarder" {
-  count                      = var.enable_iot && var.enable_function ? 1 : 0
+  count                      = local.function_plan ? 1 : 0
   name                       = local.names.func
   resource_group_name        = local.rg
-  location                   = local.location
+  location                   = coalesce(var.function_location, local.location)
   service_plan_id            = azurerm_service_plan.function[0].id
   storage_account_name       = azurerm_storage_account.public.name
   storage_account_access_key = azurerm_storage_account.public.primary_access_key
@@ -47,6 +66,8 @@ resource "azurerm_linux_function_app" "forwarder" {
 
   site_config {
     application_insights_connection_string = azurerm_application_insights.this.connection_string
+    # A dedicated plan needs Always On or the Event Hub trigger stops when the app idles. Y1 cannot use it.
+    always_on = var.function_plan_sku != "Y1"
 
     application_stack {
       python_version = "3.11"
@@ -56,8 +77,86 @@ resource "azurerm_linux_function_app" "forwarder" {
   app_settings = {
     # Event Hub-compatible endpoint of the IoT Hub, read by the IoT Hub trigger.
     IOTHUB_EVENTS_CONNECTION = "Endpoint=${azurerm_iothub.this[0].event_hub_events_endpoint};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.function[0].name};SharedAccessKey=${azurerm_iothub_shared_access_policy.function[0].primary_key};EntityPath=${azurerm_iothub.this[0].event_hub_events_path}"
+    # The trigger reads the event hub name from here (event_hub_name = "%IOTHUB_EVENTS_PATH%").
+    IOTHUB_EVENTS_PATH = azurerm_iothub.this[0].event_hub_events_path
+    LARAVEL_URL        = "https://${azurerm_container_app.web.ingress[0].fqdn}"
+    # A plain app setting, not a Key Vault reference: the vault has public access off and the
+    # Function sits outside the VNet, so it could not resolve one. Anyone who can read the app's
+    # settings can read this key.
+    LARAVEL_API_KEY = var.function_api_key
+
+    # scripts/deploy-function.ps1 uploads a zip and Azure installs requirements.txt on the server.
+    # Declared here so a later plan does not try to remove the settings the deployment adds.
+    SCM_DO_BUILD_DURING_DEPLOYMENT = "true"
+    ENABLE_ORYX_BUILD              = "true"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.function_api_key != null
+      error_message = "Set function_api_key when enable_function is true."
+    }
+  }
+}
+
+# ---------- hosting "flex": Flex Consumption ----------
+
+resource "azurerm_service_plan" "function_flex" {
+  count               = local.function_flex ? 1 : 0
+  name                = "${local.names.plan}-flex"
+  resource_group_name = local.rg
+  location            = coalesce(var.function_location, local.location)
+  os_type             = "Linux"
+  sku_name            = "FC1"
+  tags                = local.tags
+}
+
+# Flex Consumption runs the code from a blob container instead of a file share.
+resource "azurerm_storage_container" "function_deploy" {
+  count                 = local.function_flex ? 1 : 0
+  name                  = "function-deploy"
+  storage_account_id    = azurerm_storage_account.public.id
+  container_access_type = "private"
+}
+
+resource "azurerm_function_app_flex_consumption" "forwarder" {
+  count               = local.function_flex ? 1 : 0
+  name                = local.names.func
+  resource_group_name = local.rg
+  # Same region as the storage account (function_location = null) is best for latency, but
+  # Microsoft calls it a performance optimization, not a rule, when the app is created outside
+  # the portal. A different region works in principle and was not tried here.
+  location        = coalesce(var.function_location, local.location)
+  service_plan_id = azurerm_service_plan.function_flex[0].id
+  tags            = local.tags
+
+  runtime_name    = "python"
+  runtime_version = "3.11"
+
+  storage_container_type      = "blobContainer"
+  storage_container_endpoint  = "${trimsuffix(azurerm_storage_account.public.primary_blob_endpoint, "/")}/${azurerm_storage_container.function_deploy[0].name}"
+  storage_authentication_type = "StorageAccountConnectionString"
+  storage_access_key          = azurerm_storage_account.public.primary_access_key
+
+  # The smallest instance size, to use as little of the regional memory quota as possible.
+  instance_memory_in_mb  = 512
+  maximum_instance_count = 10
+
+  site_config {
+    application_insights_connection_string = azurerm_application_insights.this.connection_string
+  }
+
+  app_settings = {
+    # The Event Hubs trigger keeps its checkpoints in this storage account.
+    AzureWebJobsStorage = azurerm_storage_account.public.primary_connection_string
+
+    IOTHUB_EVENTS_CONNECTION = "Endpoint=${azurerm_iothub.this[0].event_hub_events_endpoint};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.function[0].name};SharedAccessKey=${azurerm_iothub_shared_access_policy.function[0].primary_key};EntityPath=${azurerm_iothub.this[0].event_hub_events_path}"
+    IOTHUB_EVENTS_PATH       = azurerm_iothub.this[0].event_hub_events_path
     LARAVEL_URL              = "https://${azurerm_container_app.web.ingress[0].fqdn}"
-    LARAVEL_API_KEY          = var.function_api_key
+    # Same trade-off as above: a plain app setting, because the vault is not reachable from here.
+    LARAVEL_API_KEY = var.function_api_key
+    # No SCM_DO_BUILD_DURING_DEPLOYMENT, ENABLE_ORYX_BUILD or FUNCTIONS_WORKER_RUNTIME: Flex
+    # Consumption does not take them (the runtime is runtime_name) and builds remotely by itself.
   }
 
   lifecycle {

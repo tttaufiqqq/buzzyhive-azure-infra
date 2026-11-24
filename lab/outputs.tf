@@ -19,7 +19,7 @@ output "iothub_name" {
 }
 
 output "function_name" {
-  value = one(azurerm_linux_function_app.forwarder[*].name)
+  value = one(concat(azurerm_linux_function_app.forwarder[*].name, azurerm_function_app_flex_consumption.forwarder[*].name))
 }
 
 output "ml_workspace_name" {

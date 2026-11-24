@@ -4,7 +4,8 @@
 Unlike simulate_sensor.py, which posts HTTP straight to Laravel, this sends the
 same JSON as device-to-cloud telemetry, so the readings show up in the hub's
 Devices list and message metrics. Nothing forwards them to Laravel until the
-IoT Hub forwarder Function exists (it is not written yet), so they stop at the hub.
+IoT Hub forwarder Function is deployed (functions/forwarder, scripts/deploy-function.ps1),
+so with the Function off they stop at the hub.
 
 Requires one package:
 

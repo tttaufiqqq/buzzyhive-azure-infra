@@ -53,7 +53,30 @@ variable "iothub_location" {
 variable "enable_function" {
   type        = bool
   default     = false
-  description = "Azure Function app that forwards IoT Hub messages to Laravel. Needs enable_iot. Off by default: this repository creates the app but not the function code yet, and Consumption (Y1) quota can be zero on a new subscription."
+  description = "Azure Function app that forwards IoT Hub messages to Laravel. Needs enable_iot and function_api_key. After the apply, upload the code with scripts/deploy-function.ps1."
+}
+
+variable "function_location" {
+  type        = string
+  default     = null
+  description = "Region of the Function app and its plan. null means the lab's region (Malaysia West). Set it, for example to southeastasia, if that region has no free capacity for the plan. The storage account stays where it is."
+}
+
+variable "function_hosting" {
+  type        = string
+  default     = "flex"
+  description = "How the forwarder Function is hosted: flex (Flex Consumption, which has its own quota) or plan (a classic App Service plan, see function_plan_sku). On the Free Trial subscription only flex worked: the classic plans had a quota of 0."
+
+  validation {
+    condition     = contains(["plan", "flex"], var.function_hosting)
+    error_message = "function_hosting must be plan or flex."
+  }
+}
+
+variable "function_plan_sku" {
+  type        = string
+  default     = "B1"
+  description = "App Service plan SKU for the forwarder Function. B1 is a small dedicated plan (about US$13 per month, an estimate). Y1 (Consumption) was refused in Malaysia West on 25/11/2026 with 'Requested features are not supported in region'."
 }
 
 variable "keep_web_and_ml_warm" {
