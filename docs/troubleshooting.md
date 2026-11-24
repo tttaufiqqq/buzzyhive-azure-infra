@@ -378,3 +378,20 @@ The seeded hives get random node identifiers, so find a hive id and its node by 
 
 <img src="evidence/70-appinsights-live-metrics-unavailable.png" alt="Application Insights Live metrics: Not available, couldn't connect to your application, over a grey Demo chart" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 32.2. Live metrics cannot connect to an application.*
+
+## 33. Every `terraform plan` proposes to remove the `Consumption` workload profile
+
+**Symptom:** after a clean apply, `terraform plan` was not empty. Adding one variable (`min_replicas` on two apps) showed `6 to change` instead of 2. The extra four were the environment, `laravel-worker` and the two Jobs.
+
+**What the plan showed:**
+
+- `workload_profile_name = "Consumption" -> null` on each of the three apps and the two Jobs.
+- A `workload_profile` block (`name = "Consumption"`, `minimum_count = 0`, `maximum_count = 0`) removed from `azurerm_container_app_environment.this`.
+
+**Cause:** Azure adds a `Consumption` workload profile to every consumption-only environment and stamps its name on the apps and Jobs that run in it. The configuration does not declare it, so the provider plans to remove it. This is not drift caused by a manual change, and nothing was edited in the portal.
+
+**Fix:** `ignore_changes = [workload_profile]` on the environment and `ignore_changes = [workload_profile_name]` on the three apps and two Jobs (`lab/containerapps.tf`). The next plan showed only the two intended `min_replicas` changes (`Plan: 0 to add, 2 to change, 0 to destroy`).
+
+**Why it matters:** an empty plan after an apply is the idempotence check (see `docs/implementation-log.md`). Without this fix that check never passes, and a reviewer would learn to ignore a noisy plan. Removing a workload profile from a live environment is also not something to apply by accident.
+
+**Related:** `min_replicas` on `laravel-web` and `flask-ml` is now the variable `keep_web_and_ml_warm` (default `false`), the switch suggested in entry 31. It was set to `true` on 24/11/2026 before the load test, and both new revisions came up `Healthy` with one replica.
