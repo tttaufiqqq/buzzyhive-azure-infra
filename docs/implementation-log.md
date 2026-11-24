@@ -3,7 +3,7 @@
 This log records how the infrastructure was planned, deployed, and fixed. It lists what happened, what failed, and why each decision was made.
 
 > [!NOTE]
-> On 2026-11-24 all three Terraform roots were applied to a Free Trial subscription, the images were pushed, the database was migrated and seeded, and a simulated device posted readings that came back with predictions. The apply and the checks after it turned up ten problems, listed in section 5, and each has a write-up in [troubleshooting](troubleshooting.md). The Azure ML training run, the IoT Hub forwarder Function and CI plan and apply jobs are not done. The lab had not been destroyed when this was written, and real costs are not measured yet.
+> On 24/11/2026 all three Terraform roots were applied to a Free Trial subscription, the images were pushed, the database was migrated and seeded, and a simulated device posted readings that came back with predictions. The apply and the checks after it turned up ten problems, listed in section 5, and each has a write-up in [troubleshooting](troubleshooting.md). The Azure ML training run, the IoT Hub forwarder Function and CI plan and apply jobs are not done. The lab had not been destroyed when this was written, and real costs are not measured yet.
 
 ## 1. Goal
 
@@ -48,30 +48,31 @@ Host [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readines
 
 | Date | Step | Outcome |
 |---|---|---|
-| 2026-11-22 | First architecture drawn in draw.io, two pages | Network and runtime, then governance and DevOps |
-| 2026-11-24 | Design reviewed against free-account limits and Azure behaviour | Added Jobs for the scheduler and migrations, the MySQL private DNS zone, a device simulator, lock toggle, and RBAC Administrator role |
-| 2026-11-24 | Design compared with the reference Terraform project | Split the storage accounts, three roots, soft-delete purge, preflight script, audit-mode Policy, `rg-hive-lab`, $100 budget |
-| 2026-11-24 | Documentation written | This repository |
-| 2026-11-24 | Dockerfiles, compose file and `.dockerignore` written in the app repository | Found while doing it: the `ML_URL` name was wrong in Terraform, `VITE_PUSHER_*` must be build arguments, `TRUSTED_PROXIES` was needed, and uploads use local disk |
-| 2026-11-24 | Both images built and run with Docker Compose in WSL2 | Whole stack works end to end. The migrate step failed on a trigger until `log_bin_trust_function_creators` was set. See [Docker images](docker.md) for sizes and the Alpine comparison |
-| 2026-11-24 | Region changed after checking the `Microsoft.Devices` provider list | Malaysia West for everything except the IoT Hub, which has no Malaysia West and goes to Southeast Asia |
-| 2026-11-24 | Terraform scaffolded: `bootstrap`, `foundation`, `lab`, `scripts/preflight.sh`, CI workflow | `terraform fmt` and `validate` pass. Not planned or applied. |
-| 2026-11-24 | First push to GitHub triggered CI | `terraform fmt -check`, `validate` and `tflint` passed for all three roots (4 jobs, 17 seconds) |
-| 2026-11-24 | App test suite run in a throwaway container against the changed app code | 168 tests, 842 assertions, all pass |
-| 2026-11-24 | `scripts/preflight.sh` run against the real Free Trial subscription | Providers registered, MySQL B1ms offered in Malaysia West, quota 4 vCPUs (4 for DSv2), IoT Hub listed for Southeast Asia. Two checks had bugs of their own (see section 4), fixed and re-run clean |
-| 2026-11-24 | Root 1: `bootstrap`, first apply | 5 added in about two minutes. State storage account in `rg-hive-iac`, Malaysia West. See [Deploy 4.2](deploy.md#42-bootstrap-state-storage) |
-| 2026-11-24 | Root 2: `foundation`, first apply | 17 added, no errors. The budget and both policy definition IDs were accepted. See [Deploy 4.3](deploy.md#43-foundation-resource-group-governance-identity) |
-| 2026-11-24 | Root 3: `lab`, first apply | Stopped on two errors, the Container Apps subnet delegation and the IoT Hub partition count. Both were Terraform bugs and are fixed (troubleshooting 23, 24) |
-| 2026-11-24 | Root 3: `lab`, second apply, placeholder images | 5 added, 1 changed. The IoT Hub took 4 min 9 s and each Container App 40 to 48 s |
-| 2026-11-24 | Images built in WSL and pushed to the registry | `az acr build` is unavailable in this region; the registry login needed a workaround (troubleshooting 25 to 27) |
-| 2026-11-24 | Root 3: `lab`, third apply, real images | 2 added (the Jobs), 4 changed. A state-lock error delayed the plan (troubleshooting 28). A typo in the `flask` image tag went unnoticed (troubleshooting 29) |
-| 2026-11-24 | `laravel-migrate` Job started | Succeeded on the first run. Landing page served from the Container Apps URL |
-| 2026-11-24 | Database seeded through the migrate Job | Failed twice on how `az` passes arguments, then succeeded with `php artisan db:seed` (troubleshooting 30) |
-| 2026-11-24 | Simulator run against the app | `422` before seeding, `201` with `ml_unavailable` after, because of the image-tag typo |
-| 2026-11-24 | `flask-ml` tag fixed and applied | 0 added, 6 changed. New revision `Running` and `Healthy`. Five readings returned `201` in 0.17 to 0.29 s with no warning |
-| 2026-11-24 | Portal walk-through of the deployed lab | Network, ingress, identity, alerts, policy and state all matched the design, apart from Application Insights, which showed no data. The VNet is named `vnet-hive-lab`, not `vnet-hive` as the docs said. See [Architecture, section 8](architecture.md#8-what-the-portal-showed-after-the-first-apply) |
-| 2026-11-24 | Device simulator through IoT Hub | A device was registered and `scripts/simulate_device.py` sent 10 readings that reached the hub. Nothing forwards them to Laravel yet. The create command printed the device keys. See [Deploy 4.7](deploy.md#47-send-readings-through-iot-hub) |
-| | Azure ML training run | Not started |
+| 22/11/2026 | First architecture drawn in draw.io, two pages | Network and runtime, then governance and DevOps |
+| 24/11/2026 | Design reviewed against free-account limits and Azure behaviour | Added Jobs for the scheduler and migrations, the MySQL private DNS zone, a device simulator, lock toggle, and RBAC Administrator role |
+| 24/11/2026 | Design compared with the reference Terraform project | Split the storage accounts, three roots, soft-delete purge, preflight script, audit-mode Policy, `rg-hive-lab`, $100 budget |
+| 24/11/2026 | Documentation written | This repository |
+| 24/11/2026 | Dockerfiles, compose file and `.dockerignore` written in the app repository | Found while doing it: the `ML_URL` name was wrong in Terraform, `VITE_PUSHER_*` must be build arguments, `TRUSTED_PROXIES` was needed, and uploads use local disk |
+| 24/11/2026 | Both images built and run with Docker Compose in WSL2 | Whole stack works end to end. The migrate step failed on a trigger until `log_bin_trust_function_creators` was set. See [Docker images](docker.md) for sizes and the Alpine comparison |
+| 24/11/2026 | Region changed after checking the `Microsoft.Devices` provider list | Malaysia West for everything except the IoT Hub, which has no Malaysia West and goes to Southeast Asia |
+| 24/11/2026 | Terraform scaffolded: `bootstrap`, `foundation`, `lab`, `scripts/preflight.sh`, CI workflow | `terraform fmt` and `validate` pass. Not planned or applied. |
+| 24/11/2026 | First push to GitHub triggered CI | `terraform fmt -check`, `validate` and `tflint` passed for all three roots (4 jobs, 17 seconds) |
+| 24/11/2026 | App test suite run in a throwaway container against the changed app code | 168 tests, 842 assertions, all pass |
+| 24/11/2026 | `scripts/preflight.sh` run against the real Free Trial subscription | Providers registered, MySQL B1ms offered in Malaysia West, quota 4 vCPUs (4 for DSv2), IoT Hub listed for Southeast Asia. Two checks had bugs of their own (see section 4), fixed and re-run clean |
+| 24/11/2026 | Root 1: `bootstrap`, first apply | 5 added in about two minutes. State storage account in `rg-hive-iac`, Malaysia West. See [Deploy 4.2](deploy.md#42-bootstrap-state-storage) |
+| 24/11/2026 | Root 2: `foundation`, first apply | 17 added, no errors. The budget and both policy definition IDs were accepted. See [Deploy 4.3](deploy.md#43-foundation-resource-group-governance-identity) |
+| 24/11/2026 | Root 3: `lab`, first apply | Stopped on two errors, the Container Apps subnet delegation and the IoT Hub partition count. Both were Terraform bugs and are fixed (troubleshooting 23, 24) |
+| 24/11/2026 | Root 3: `lab`, second apply, placeholder images | 5 added, 1 changed. The IoT Hub took 4 min 9 s and each Container App 40 to 48 s |
+| 24/11/2026 | Images built in WSL and pushed to the registry | `az acr build` is unavailable in this region; the registry login needed a workaround (troubleshooting 25 to 27) |
+| 24/11/2026 | Root 3: `lab`, third apply, real images | 2 added (the Jobs), 4 changed. A state-lock error delayed the plan (troubleshooting 28). A typo in the `flask` image tag went unnoticed (troubleshooting 29) |
+| 24/11/2026 | `laravel-migrate` Job started | Succeeded on the first run. Landing page served from the Container Apps URL |
+| 24/11/2026 | Database seeded through the migrate Job | Failed twice on how `az` passes arguments, then succeeded with `php artisan db:seed` (troubleshooting 30) |
+| 24/11/2026 | Simulator run against the app | `422` before seeding, `201` with `ml_unavailable` after, because of the image-tag typo |
+| 24/11/2026 | `flask-ml` tag fixed and applied | 0 added, 6 changed. New revision `Running` and `Healthy`. Five readings returned `201` in 0.17 to 0.29 s with no warning |
+| 24/11/2026 | Portal walk-through of the deployed lab | Network, ingress, identity, alerts, policy and state all matched the design, apart from Application Insights, which showed no data. The VNet is named `vnet-hive-lab`, not `vnet-hive` as the docs said. See [Architecture, section 8](architecture.md#8-what-the-portal-showed-after-the-first-apply) |
+| 24/11/2026 | Device simulator through IoT Hub | A device was registered and `scripts/simulate_device.py` sent 10 readings that reached the hub. Nothing forwards them to Laravel yet. The create command printed the device keys. See [Deploy 4.7](deploy.md#47-send-readings-through-iot-hub) |
+| 24/11/2026 | Azure ML job files written and the training command run locally | Not run on Azure. The local run showed the model.pkl committed in the app repo is stale against its own model_metadata.json (k=1 on 140 rows, against k=7 on 1600 rows). See [Train the model in Azure ML](azure-ml.md) |
+| | Azure ML training run on Azure | Not started |
 | | IoT Hub forwarder Function | Not written |
 | | `terraform destroy` in `lab` | Not run when this was written |
 
@@ -112,7 +113,7 @@ The first run of the preflight, on the real subscription, gave two wrong answers
 
 ## 5. Problems found while applying
 
-Found by running the Terraform and the steps after it on 2026-11-24. Every one of these passed `terraform validate`, so none could have been found by the offline checks. "Running" means it happened. Each has a symptom-to-fix write-up.
+Found by running the Terraform and the steps after it on 24/11/2026. Every one of these passed `terraform validate`, so none could have been found by the offline checks. "Running" means it happened. Each has a symptom-to-fix write-up.
 
 | Problem | Effect | Fix | Troubleshooting |
 |---|---|---|---|
@@ -148,6 +149,7 @@ The items on the "not verified" list written before the first apply came out lik
 - Can the tenant create Entra groups and app registrations with Terraform? Yes. The `foundation` apply created the groups, the managed identity and the OIDC app registration, with no errors.
 - Is the Function better placed in the VNet (Flex Consumption) so it can call an internal ingress? Still open, and the Function code is not written.
 - Why is the first page load slow, and does `min_replicas = 1` on `laravel-web` fix it? Open (troubleshooting 31).
+- Should the stale `model.pkl` and `scaler.pkl` in the app repo be replaced by the retrained pair, and does the retrained model pass the guardrail check? Open ([Azure ML](azure-ml.md)).
 - Should Application Insights get an SDK in each image, or should the docs drop the claim? Open (troubleshooting 32).
 - What did the day cost? Open until the destroy and a Cost analysis run. About $64.32 of this month's spend predates this project (see [Cost and teardown](cost-and-teardown.md#13-what-else-is-in-the-subscription)).
 - Is the exact cause of the registry login failure the PowerShell-to-`wsl` pipe? Probably, but not proven.

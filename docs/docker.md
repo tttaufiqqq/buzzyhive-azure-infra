@@ -3,7 +3,7 @@
 This article explains why each choice in the two container images was made, with measurements, and how they run on Azure. The Docker files and the app's own requirements live in the [application repository](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readiness-Prediction) (`docs/docker/docker.md`), because they belong to the app. This repository only runs the result.
 
 > [!NOTE]
-> Everything here was built and run with Docker 29.7 in WSL2 (Ubuntu) on a laptop, and the numbers are from that machine. Throughput figures come from one 15-second run per case, so treat differences of a few percent as noise. On 2026-11-24 the same images were also pushed to the registry and ran on Container Apps; section 7 records how, and section 5 what that did and did not show.
+> Everything here was built and run with Docker 29.7 in WSL2 (Ubuntu) on a laptop, and the numbers are from that machine. Throughput figures come from one 15-second run per case, so treat differences of a few percent as noise. On 24/11/2026 the same images were also pushed to the registry and ran on Container Apps; section 7 records how, and section 5 what that did and did not show.
 
 ## 1. What the app needs, and where this repository provides it
 

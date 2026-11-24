@@ -31,7 +31,7 @@ Containers fix the first two, and IoT Hub adds a managed ingestion path for the 
 | 8 | Laravel broadcasts live events to Pusher, which pushes them to the browser |
 | 9 | The worker sends Ready and Nearly Ready alerts to Telegram |
 | 10 | Apps reach Key Vault and Storage only through private endpoints |
-| 11 | Diagnostic settings send logs, metrics and traces to Log Analytics and Application Insights. **Observed on 2026-11-24:** Application Insights showed no data, so the apps do not yet send traces there ([troubleshooting 32](troubleshooting.md#32-application-insights-shows-no-data)) |
+| 11 | Diagnostic settings send logs, metrics and traces to Log Analytics and Application Insights. **Observed on 24/11/2026:** Application Insights showed no data, so the apps do not yet send traces there ([troubleshooting 32](troubleshooting.md#32-application-insights-shows-no-data)) |
 | 12 | GitHub Actions builds images, pushes to ACR and deploys using OIDC |
 | 13 | Azure ML retrains the KNN model and registers it, and the pipeline rebuilds the `flask-ml` image |
 
@@ -119,7 +119,7 @@ Role assignments:
 
 ## 8. What the portal showed after the first apply
 
-These screenshots were taken on 2026-11-24, partway through the first `lab` apply, while the Container Apps environment and the IoT Hub were still missing (see [troubleshooting](troubleshooting.md#23-the-container-apps-environment-is-rejected-the-subnet-is-not-delegated)). Rows with `pldns` belong to the sibling reference project that shares the subscription, not to this one.
+These screenshots were taken on 24/11/2026, partway through the first `lab` apply, while the Container Apps environment and the IoT Hub were still missing (see [troubleshooting](troubleshooting.md#23-the-container-apps-environment-is-rejected-the-subnet-is-not-delegated)). Rows with `pldns` belong to the sibling reference project that shares the subscription, not to this one.
 
 <img src="evidence/22-portal-resources-first-part.png" alt="Resource Manager list showing the container registry, action group, Application Insights, managed identity, Key Vault, Log Analytics workspace and network security groups in rg-hive-lab, Malaysia West" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 8.1. The first part of the list: the registry, action group, Application Insights, managed identity, Key Vault, Log Analytics workspace and the NSGs for the three subnets. All are in `rg-hive-lab` in Malaysia West, apart from the action group, which is global.*
@@ -152,8 +152,8 @@ The portal's Resource visualizer draws the real resource graph of `rg-hive-lab`.
 <img src="evidence/59-vnet-subnets-delegation.png" alt="vnet-hive-lab subnets: snet-mysql 10.0.4.0/28 delegated to Microsoft.DBforMySQL, snet-pe 10.0.2.0/24 with no delegation, snet-aca 10.0.0.0/23 delegated to Microsoft.App environments, each with its network security group" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 8.6. The three subnets match the [Network](#4-network) table. `snet-mysql` and `snet-aca` are delegated, `snet-pe` is not, and each has its own NSG. The `snet-aca` delegation is the fix from [troubleshooting 23](troubleshooting.md#23-the-container-apps-environment-is-rejected-the-subnet-is-not-delegated).*
 
-<img src="evidence/60-mysql-overview.png" alt="MySQL flexible server overview: status Ready, Burstable B1ms with 1 vCore, 2 GiB RAM and 20 GB storage, MySQL 8.0, Malaysia West, tags, and a banner that this version loses standard support on 31 December 2026" style="border: 1px solid #d0d7de; border-radius: 6px;">
-*Figure 8.7. The database: `Ready`, Burstable B1ms (1 vCore, 2 GiB, 20 GB, 360 IOPS), MySQL 8.0. The banner says this version loses standard Azure support on 31 December 2026 and that extended-support charges begin on 1 January 2027. That does not affect a one-day lab.*
+<img src="evidence/60-mysql-overview.png" alt="MySQL flexible server overview: status Ready, Burstable B1ms with 1 vCore, 2 GiB RAM and 20 GB storage, MySQL 8.0, Malaysia West, tags, and a banner that this version loses standard support on 31/12/2026" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 8.7. The database: `Ready`, Burstable B1ms (1 vCore, 2 GiB, 20 GB, 360 IOPS), MySQL 8.0. The banner says this version loses standard Azure support on 31/12/2026 and that extended-support charges begin on 01/01/2027. That does not affect a one-day lab.*
 
 <img src="evidence/61-mysql-networking-private.png" alt="MySQL Networking page: virtual network vnet-hive-lab, subnet snet-mysql delegated to MySQL Flexible Server, private DNS zone privatelink.mysql.database.azure.com, TLS enforced" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 8.8. MySQL is reached through the delegated subnet and the `privatelink.mysql.database.azure.com` zone, with TLS enforced. The page offers no public-access setting.*

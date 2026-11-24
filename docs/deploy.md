@@ -1,6 +1,6 @@
 # Deploy, redeploy, and destroy
 
-This article shows the steps to deploy the infrastructure, change it, and delete it, with what happened when they were run on 2026-11-24.
+This article shows the steps to deploy the infrastructure, change it, and delete it, with what happened when they were run on 24/11/2026.
 
 > [!NOTE]
 > All three roots (`bootstrap`, `foundation`, `lab`) have been applied once, the images were pushed, the database was migrated and seeded, and a Python simulator posted readings that produced stored predictions. The first `lab` apply hit two errors and the image step hit several more; each is in [troubleshooting](troubleshooting.md) (entries 23 to 32). Screenshots are in [`evidence/`](evidence/). The environment had not been destroyed when this was written.
@@ -13,7 +13,7 @@ This article shows the steps to deploy the infrastructure, change it, and delete
   - Check quota with `az vm list-usage --location malaysiawest -o table`.
   - Confirm MySQL B1ms is offered with `az mysql flexible-server list-skus --location malaysiawest -o table`.
 - Check that you can create Entra groups and app registrations in your tenant. A university tenant may block this.
-- Check your remaining credit and its expiry date in Cost Management, then Credits ($135.68 when this was written, expiring 2 December 2026; see [Cost and teardown](cost-and-teardown.md#1-estimated-cost)).
+- Check your remaining credit and its expiry date in Cost Management, then Credits ($135.68 when this was written, expiring 02/12/2026; see [Cost and teardown](cost-and-teardown.md#1-estimated-cost)).
 - On PowerShell, quote any Terraform argument that contains a dot, for example `terraform init -reconfigure "-backend-config=backend.hcl"`. Unquoted, PowerShell splits it and Terraform fails with `No positional arguments are expected`. The same applies to `-var-file=...`.
 - Build the app images locally first (see [Build the images](#3-build-the-images)).
 
@@ -133,7 +133,7 @@ terraform apply
 
 **What happened.** The plan was 17 to add, 0 to change, 0 to destroy, and the apply completed without errors. With `enable_budget` left at its default, the budget was created on the Free Trial subscription. The two Azure Policy definition IDs, which were written from memory, were accepted. The slowest resources were the policy assignments, which took about 1 min 41 s each; the role assignments took about 23 to 24 s.
 
-<img src="evidence/11-foundation-tfvars.png" alt="foundation terraform.tfvars open in the editor: subscription_id blurred, alert_emails, budget_amount 100, budget_start_date 2026-11-01, github_owner, github_repo and the state storage names" style="border: 1px solid #d0d7de; border-radius: 6px;">
+<img src="evidence/11-foundation-tfvars.png" alt="foundation terraform.tfvars open in the editor: subscription_id blurred, alert_emails, budget_amount 100, budget_start_date 01/11/2026, github_owner, github_repo and the state storage names" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 4.7. `foundation/terraform.tfvars` (subscription ID blurred).*
 
 <img src="evidence/12-foundation-plan.png" alt="foundation terraform plan: 17 to add, 0 to change, 0 to destroy, showing the managed identity id-hive-lab-apps with the project tag buzzyhive" style="border: 1px solid #d0d7de; border-radius: 6px;">
@@ -309,6 +309,7 @@ Ten messages were sent in 0.10 to 0.31 s each, and `monitor-events` printed each
 ### 4.8 Not built yet
 
 - **Function code.** `enable_function` creates the Function app, but this repository does not contain the function that forwards IoT Hub messages to Laravel. It is off by default. Until it exists, readings reach Laravel only through the app's own HTTP endpoint, so the simulator should post there.
+- **Azure ML training.** The job files exist and were checked locally, but nothing has run on Azure. See [Train the model in Azure ML](azure-ml.md).
 - **Front Door, the load test and the plan and apply jobs in CI.**
 
 After the first deploy, the GitHub Actions workflow runs `terraform fmt -check`, `validate` and `tflint`. Plan and apply jobs are not added yet.

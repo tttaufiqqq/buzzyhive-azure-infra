@@ -3,7 +3,7 @@
 This article lists problems expected from this design and problems hit while deploying it, and how to resolve them.
 
 > [!NOTE]
-> Entries 1 to 22 were written before the first apply, from Azure's documented behaviour. An entry says **Hit** or **Confirmed** only where it happened on 2026-11-24. Entries 23 to 32 were hit during the first real deployment and carry the real error text and screenshots. The screenshots are in [`evidence/`](evidence/).
+> Entries 1 to 22 were written before the first apply, from Azure's documented behaviour. An entry says **Hit** or **Confirmed** only where it happened on 24/11/2026. Entries 23 to 32 were hit during the first real deployment and carry the real error text and screenshots. The screenshots are in [`evidence/`](evidence/).
 
 ## 1. Read the deployment error
 
@@ -166,7 +166,7 @@ az monitor activity-log list --resource-group rg-hive-lab --offset 1h -o table
 
 **Not hit.** The `foundation` apply created the budget on the Free Trial subscription with `enable_budget` left at its default of `true`, so this fallback was not needed there.
 
-> Entries 23 to 32 were hit on 2026-11-24, during the first apply of `lab` and the steps after it.
+> Entries 23 to 32 were hit on 24/11/2026, during the first apply of `lab` and the steps after it.
 
 ## 23. The Container Apps environment is rejected: the subnet is not delegated
 

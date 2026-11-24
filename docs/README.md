@@ -8,10 +8,11 @@ Read these in order.
 4. [Implementation log](implementation-log.md): the decisions made, the timeline, the problems found before and during the first apply, and the lessons. Read this for the story behind the decisions.
 5. [Troubleshooting](troubleshooting.md): symptom-to-fix reference. Entries 1 to 22 are expected problems; entries 23 to 32 were hit during the first apply. Not meant to be read start to finish.
 6. [Cost and teardown](cost-and-teardown.md): estimated cost, the credit balance and expiry, how to check your own cost, and how to leave nothing running. Read this before you leave anything running.
+7. [Train the model in Azure ML](azure-ml.md): the plan and files for retraining the readiness model, and what a local check found about the committed model. Nothing in it has run on Azure yet.
 
 The two diagrams and their editable source are in [`architecture/`](architecture/). Screenshots from the first deployment are in [`evidence/`](evidence/) and are used in the deploy, troubleshooting, Docker, architecture, cost and implementation log articles.
 
 > [!NOTE]
-> The environment was applied once, on 2026-11-24. Results from that run are labelled as measured or observed, and the screenshots back them. Service prices and the cost of the run itself are still estimates, because the lab had not been destroyed and measured when this was written.
+> The environment was applied once, on 24/11/2026. Results from that run are labelled as measured or observed, and the screenshots back them. Service prices and the cost of the run itself are still estimates, because the lab had not been destroyed and measured when this was written.
 
 Start at the [repository README](../README.md) if you haven't already.

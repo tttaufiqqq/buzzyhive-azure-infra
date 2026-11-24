@@ -3,7 +3,7 @@
 This is a learning project. It designs how to run [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readiness-Prediction), a kelulut (stingless bee) harvest readiness platform, on Azure with Docker containers and Terraform, using services such as Azure IoT Hub, Container Apps and Azure Machine Learning.
 
 > [!NOTE]
-> This is a personal learning design. It is not official Microsoft guidance. On 2026-11-24 the three Terraform roots were applied once to a Free Trial subscription, the app images ran on Container Apps, and a simulated device produced predictions. The IoT Hub forwarder Function, the Azure ML training run and the CI plan and apply jobs are not done. Service prices and the cost of the run are still estimates, and each one is labelled that way.
+> This is a personal learning design. It is not official Microsoft guidance. On 24/11/2026 the three Terraform roots were applied once to a Free Trial subscription, the app images ran on Container Apps, and a simulated device produced predictions. The IoT Hub forwarder Function, the Azure ML training run and the CI plan and apply jobs are not done. Service prices and the cost of the run are still estimates, and each one is labelled that way.
 
 <img src="docs/architecture/network-and-runtime.png" alt="Azure architecture page 1: ESP32 or simulator to IoT Hub to Function to Container Apps (laravel-web, flask-ml, worker, Jobs) with MySQL, private endpoints, Key Vault, a private and a public Storage account, ACR, Azure ML and monitoring" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Page 1, network and runtime: how a sensor reading travels from the ESP32 to the dashboard. Source: [`docs/architecture/architecture.drawio`](docs/architecture/architecture.drawio).*
@@ -19,7 +19,7 @@ This is a learning project. It designs how to run [BuzzyHive 2.0](https://github
 | Part | State |
 |---|---|
 | Architecture diagram and documentation | Done |
-| Terraform (`bootstrap`, `foundation`, `lab`) | Applied once on 2026-11-24. `validate` passes and CI (fmt, validate, tflint) is green |
+| Terraform (`bootstrap`, `foundation`, `lab`) | Applied once on 24/11/2026. `validate` passes and CI (fmt, validate, tflint) is green |
 | Preflight against a real subscription | Passed (providers, MySQL SKU, quota, IoT Hub region) |
 | Docker images and local Compose stack | Built and tested end to end. 168 app tests pass |
 | Images on Azure | Pushed to the registry and running on Container Apps. The `laravel-migrate` Job and the seeder succeeded |
@@ -72,12 +72,12 @@ For a full explanation, see [Architecture](docs/architecture.md).
 
 - **Estimate, not measured:** about US$50 to 70 per month if everything is left running, so well under $5 for a one-day lab. The drivers are MySQL B1ms, the always-on worker, two private endpoints and the registry.
 - **What can break the budget:** Front Door Premium (WAF managed rules, about $330 per month) and a dedicated Container Apps workload profile (about $140 per month). Neither is in the plan.
-- **Credit:** $135.68 remaining on 2026-11-24, **expiring 2 December 2026**, so a one-day run uses only a small part of it. About $64.32 of that month's spend predates this project (see [Cost and teardown](docs/cost-and-teardown.md#13-what-else-is-in-the-subscription)).
+- **Credit:** $135.68 remaining on 24/11/2026, **expiring 02/12/2026**, so a one-day run uses only a small part of it. About $64.32 of that month's spend predates this project (see [Cost and teardown](docs/cost-and-teardown.md#13-what-else-is-in-the-subscription)).
 - **Keep it low:** destroy the `lab` root when you finish. See [Cost and teardown](docs/cost-and-teardown.md).
 
 ## 3. Prerequisites
 
-- An Azure subscription (the free account has a $200 credit for 30 days; $135.68 was left on 2026-11-24, expiring 2 December 2026)
+- An Azure subscription (the free account has a $200 credit for 30 days; $135.68 was left on 24/11/2026, expiring 02/12/2026)
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
 - Azure CLI, Docker, and Git
 - Rights to create Entra groups and app registrations in your tenant
@@ -114,7 +114,7 @@ The reasoning behind each is in [Architecture](docs/architecture.md#6-design-dec
 
 ## 6. Results so far
 
-The first block comes from local builds, CI and read-only commands, measured on one laptop (Docker 29.7 in WSL2), one run each. The second block was observed on Azure on 2026-11-24, one run each, with screenshots in [`docs/evidence/`](docs/evidence/).
+The first block comes from local builds, CI and read-only commands, measured on one laptop (Docker 29.7 in WSL2), one run each. The second block was observed on Azure on 24/11/2026, one run each, with screenshots in [`docs/evidence/`](docs/evidence/).
 
 | Check | Result |
 |---|---|
