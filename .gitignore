@@ -41,7 +41,12 @@ desktop.ini
 
 # Local handoff notes for Claude Code sessions (not project documentation)
 progress.md
+CLAUDE.md
 
 # Python bytecode from the scripts
 __pycache__/
 *.pyc
+
+# Azure ML helper output (staged code, downloaded models)
+azureml/.stage/
+azureml/out/

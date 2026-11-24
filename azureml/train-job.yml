@@ -1,0 +1,34 @@
+# Azure ML command job: retrain the BuzzyHive readiness model.
+# NOT RUN YET (written 24/11/2026). Submit it with azureml/submit-training.ps1, which stages
+# the code from the app repo and overrides `code` below.
+#
+# This reproduces what ml/model_metadata.json in the app repo DESCRIBES: "knn_k7_distance" trained
+# on the "synthetic_flat" dataset (1600 rows). Run locally on 24/11/2026 with scikit-learn 1.8.0, this
+# command produced exactly that (k=7, distance weights, 1600 rows, scaler ranges equal to the
+# metadata's feature_bounds).
+#
+# WARNING: it is NOT the same model as the model.pkl committed next to that metadata. That pickle is
+# a KNN with k=1 fitted on 140 rows with different scaler ranges, so it is stale. Retraining changes
+# predictions (943 of 1600 training rows classify differently). Treat it as a real change, and check
+# it with the app's verify_prediction_guardrails.py before deploying.
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: buzzyhive-train-knn
+experiment_name: buzzyhive-readiness
+description: Retrain the KNN readiness model on the synthetic_flat dataset.
+code: ./code            # placeholder; submit-training.ps1 replaces it with the staged folder
+command: >-
+  python train_model.py
+  --dataset synthetic_flat
+  --candidate knn_k7_distance
+  --output-dir ${{outputs.model}}
+environment:
+  image: mcr.microsoft.com/azureml/openmpi4.1.2-ubuntu20.04:latest
+  conda_file: environment.yml
+compute: azureml:train-cpu    # created by lab/ml.tf when enable_ml = true
+outputs:
+  model:
+    type: uri_folder
+tags:
+  project: buzzyhive
+  env: lab

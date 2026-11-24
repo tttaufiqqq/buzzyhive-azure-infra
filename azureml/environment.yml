@@ -1,0 +1,13 @@
+# Training environment for the BuzzyHive readiness model.
+# The scikit-learn pin MUST equal the one in the app repo's ml/requirements-serve.txt,
+# because model.pkl is a pickle: a different version can fail to load or predict differently.
+# NOT RUN YET (written 24/11/2026).
+name: buzzyhive-train
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - numpy>=1.26
+      - scikit-learn==1.8.0

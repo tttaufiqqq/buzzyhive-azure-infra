@@ -8,6 +8,9 @@ alert_email     = "you@example.com"
 enable_iot      = true
 enable_function = false # the function code is not written yet
 enable_ml       = false
+# For the Azure ML session (see azureml/ and docs/azure-ml.md): enable_ml = true, and use a 2 vCPU size,
+# because the default Standard_DS3_v2 would use the whole 4 vCPU quota.
+# ml_vm_size      = "Standard_DS2_v2"
 
 # Leave images unset to deploy a placeholder first. Set them after pushing to ACR.
 # images = {
