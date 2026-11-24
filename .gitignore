@@ -50,3 +50,7 @@ __pycache__/
 # Azure ML helper output (staged code, downloaded models)
 azureml/.stage/
 azureml/out/
+
+# Azure ML log downloads saved by hand
+std_log.txt
+run_aggregate_log.txt

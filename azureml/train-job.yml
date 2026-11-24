@@ -23,7 +23,9 @@ command: >-
   --candidate knn_k7_distance
   --output-dir ${{outputs.model}}
 environment:
-  image: mcr.microsoft.com/azureml/openmpi4.1.2-ubuntu20.04:latest
+  # Checked against mcr.microsoft.com on 24/11/2026. The earlier openmpi4.1.2-ubuntu20.04 tag
+  # no longer exists and failed the first submit with "Unable to get image details".
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
   conda_file: environment.yml
 compute: azureml:train-cpu    # created by lab/ml.tf when enable_ml = true
 outputs:

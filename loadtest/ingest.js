@@ -87,8 +87,13 @@ function jitter(centre, spread) {
   return centre + (Math.random() * 2 - 1) * spread;
 }
 
-// Same baseline as scripts/simulate_sensor.py. It classifies as not_ready, so it
-// queues no Telegram alert and the test does not spam the bot.
+// Same baseline as scripts/simulate_sensor.py.
+// WARNING: under the model that was in service on 24/11/2026 (k=1, 140 rows) this reading is
+// labelled ready or nearly_ready for every request (3,000 of 3,000 in a local simulation), so
+// EVERY request queues a SendTelegramAlert job. It only sent nothing because the hive owner had
+// no valid telegram_id. Before running this test, make sure no hive owner in HIVES has a
+// telegram_id (set it to null), or serve the retrained model (the same reading is "approaching"
+// under it, which queues no alert). See docs/load-test.md.
 function reading() {
   return {
     temp: Math.round(jitter(33.5, 1.0) * 10) / 10,

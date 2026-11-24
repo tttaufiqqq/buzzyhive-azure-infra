@@ -22,7 +22,7 @@ Do not pass the key with `-e`: it would sit in the process arguments and in the 
 ## `ingest.js`
 
 - Posts to `/api/sensor-data` across hives 1 to 8, with the same baseline reading as `scripts/simulate_sensor.py`.
-- The baseline classifies as `not_ready`, so it queues no Telegram alert.
+- **Warning: the baseline queues a Telegram alert on every request** under the model that was in service on 24/11/2026 (it is labelled `ready` or `nearly_ready`). On 24/11/2026 nothing was sent only because the hive owner had no valid `telegram_id` yet. **Before every run, set `telegram_id` to null for the owners of hives 1 to 8**, or serve the retrained model first. Otherwise one run can send thousands of messages.
 - Thresholds: error rate under 1%, p95 under 500 ms (the app's `NFR-PERF-01`), and no `ml_unavailable` responses.
 - Failing a threshold is a result, not a bug: one 0.5 vCPU web replica is expected to saturate, and the rate where p95 crosses 500 ms is what to record.
 

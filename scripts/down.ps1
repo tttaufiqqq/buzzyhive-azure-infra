@@ -98,7 +98,17 @@ Say "5. Clean up the session file and check nothing is left"
 Run "delete lab\zz-images.auto.tfvars" { Remove-Item $autoVars -Force -ErrorAction SilentlyContinue }
 if ($DryRun) {
   Note "[dry run] az resource list --tag project=buzzyhive -o table, and az group list for ME_* groups"
+  Note "[dry run] az resource list -g $ResourceGroup (anything left there was not created by Terraform)"
 } else {
+  # Azure ML creates its own, untagged Container Registry on the first job (24/11/2026). It is not in
+  # Terraform state, so destroy leaves it behind, and it keeps billing. The resource group is kept,
+  # so anything still inside it now is a leftover.
+  $left = (& az resource list -g $ResourceGroup --query "[].{name:name, type:type}" -o table | Out-String).Trim()
+  if ($left) {
+    Write-Warning "Still inside $ResourceGroup after the destroy. Terraform did not create these, so delete them yourself:"
+    Write-Host $left
+    Write-Host "   A leftover registry: az acr delete -n <name> -g $ResourceGroup --yes" -ForegroundColor Yellow
+  }
   Write-Host "   Resources still tagged project=buzzyhive (the foundation identity is expected):"
   & az resource list --tag project=buzzyhive --query "[].{name:name, group:resourceGroup, type:type}" -o table
   $managed = (& az group list --query "[?starts_with(name,'ME_')].name" -o tsv | Out-String).Trim()

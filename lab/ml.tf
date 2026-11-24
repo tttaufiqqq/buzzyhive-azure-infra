@@ -30,6 +30,14 @@ resource "azurerm_machine_learning_workspace" "this" {
   identity {
     type = "SystemAssigned"
   }
+
+  # Azure ML creates its own Container Registry on the first job and attaches it to the
+  # workspace. The registry is not in Terraform state, and removing the attribute forces the
+  # workspace (and so the compute cluster) to be replaced. Ignore it, and delete the registry
+  # by hand at teardown (scripts/down.ps1 lists it). See troubleshooting entry 37.
+  lifecycle {
+    ignore_changes = [container_registry_id]
+  }
 }
 
 resource "azurerm_machine_learning_compute_cluster" "train" {
