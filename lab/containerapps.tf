@@ -108,6 +108,12 @@ resource "azurerm_container_app" "web" {
           transport = "HTTP"
           port      = local.web_port
           path      = "/up"
+          # The defaults (1 s timeout, 3 failures) killed a busy replica on 24/11/2026;
+          # see docs/troubleshooting.md entry 34.
+          timeout                 = 5
+          interval_seconds        = 10
+          failure_count_threshold = 5
+          initial_delay           = 10
         }
       }
 
@@ -255,6 +261,11 @@ resource "azurerm_container_app" "flask" {
           transport = "HTTP"
           port      = local.flask_port
           path      = "/health"
+          # Same reasoning as laravel-web: do not restart on a short stall.
+          timeout                 = 5
+          interval_seconds        = 10
+          failure_count_threshold = 5
+          initial_delay           = 10
         }
       }
     }
