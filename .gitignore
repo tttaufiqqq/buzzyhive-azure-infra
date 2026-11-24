@@ -41,3 +41,7 @@ desktop.ini
 
 # Local handoff notes for Claude Code sessions (not project documentation)
 progress.md
+
+# Python bytecode from the scripts
+__pycache__/
+*.pyc
