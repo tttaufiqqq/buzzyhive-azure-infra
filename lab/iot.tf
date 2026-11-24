@@ -9,6 +9,8 @@ resource "azurerm_iothub" "this" {
   location            = var.iothub_location # not offered in the resource group's region
   tags                = local.tags
 
+  event_hub_partition_count = 2 # the F1 tier allows exactly 2; the provider default is 4
+
   sku {
     name     = "F1" # free tier: 8,000 messages per day, one per subscription
     capacity = 1

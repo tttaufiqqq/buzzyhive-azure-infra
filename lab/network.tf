@@ -86,6 +86,16 @@ resource "azurerm_subnet" "aca" {
   resource_group_name  = local.rg
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = [local.snet_aca_cidr]
+
+  # Container Apps requires the environment subnet to be delegated to it.
+  delegation {
+    name = "container-apps"
+
+    service_delegation {
+      name    = "Microsoft.App/environments"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+    }
+  }
 }
 
 resource "azurerm_subnet" "pe" {
