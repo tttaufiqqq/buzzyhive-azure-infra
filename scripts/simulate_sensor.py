@@ -60,7 +60,39 @@ def random_reading():
     }
 
 
-PROFILES = {"baseline": baseline_reading, "random": random_reading}
+def _in_ranges(temp, humidity, mq2, mq3, mq5, mq135):
+    return {
+        "temp": round(random.uniform(*temp), 1),
+        "humidity": round(random.uniform(*humidity), 1),
+        "mq2_value": random.randint(*mq2),
+        "mq3_value": random.randint(*mq3),
+        "mq5_value": random.randint(*mq5),
+        "mq135_value": random.randint(*mq135),
+    }
+
+
+def ready_reading():
+    """Readings the model in service labels `ready` (a Telegram alert is queued).
+
+    Found on 24/11/2026 by running the app repo's committed model.pkl and runtime
+    guardrails over 2000 random samples of these ranges: all 2000 were `ready` with
+    no warning. This is the stale k=1 model; a retrained model may label them
+    differently. Each reading queues one alert, with no cooldown, so keep --count small.
+    """
+    return _in_ranges((32.0, 34.0), (66, 74), (150, 175), (160, 190), (232, 250), (275, 295))
+
+
+def nearly_ready_reading():
+    """Same check as ready_reading, 2000 of 2000 samples were `nearly_ready`."""
+    return _in_ranges((32.0, 34.0), (62, 68), (120, 145), (115, 150), (190, 215), (225, 250))
+
+
+PROFILES = {
+    "baseline": baseline_reading,
+    "random": random_reading,
+    "ready": ready_reading,
+    "nearly_ready": nearly_ready_reading,
+}
 
 
 def post(url, api_key, payload, timeout):
