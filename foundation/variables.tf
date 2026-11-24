@@ -15,6 +15,12 @@ variable "project" {
   default = "hive"
 }
 
+variable "project_tag" {
+  type        = string
+  default     = "buzzyhive"
+  description = "Value of the project tag. Separate from var.project, which is a short prefix for resource names (Azure caps storage accounts at 24 characters)."
+}
+
 variable "env" {
   type    = string
   default = "lab"
@@ -22,8 +28,8 @@ variable "env" {
 
 variable "location" {
   type        = string
-  default     = "southeastasia"
-  description = "Region of the resource group."
+  default     = "malaysiawest"
+  description = "Region of the resource group. Everything in lab/ is created here, except the IoT Hub (see iothub_location in lab/)."
 }
 
 variable "allowed_locations" {
@@ -46,6 +52,12 @@ variable "alert_emails" {
     condition     = length(var.alert_emails) > 0
     error_message = "Provide at least one address."
   }
+}
+
+variable "enable_budget" {
+  type        = bool
+  default     = true
+  description = "Create the subscription budget. Set false if the apply fails because the subscription type does not support budgets (possible on a free trial)."
 }
 
 variable "budget_amount" {

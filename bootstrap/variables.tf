@@ -6,7 +6,7 @@ variable "subscription_id" {
 
 variable "location" {
   type        = string
-  default     = "southeastasia"
+  default     = "malaysiawest"
   description = "Azure region for the state storage account."
 }
 
@@ -19,6 +19,12 @@ variable "project" {
     condition     = can(regex("^[a-z0-9]{2,8}$", var.project))
     error_message = "Use 2 to 8 lowercase letters or digits so the storage account name stays within 24 characters."
   }
+}
+
+variable "project_tag" {
+  type        = string
+  default     = "buzzyhive"
+  description = "Value of the project tag. Separate from var.project, which is a short prefix for resource names (Azure caps storage accounts at 24 characters)."
 }
 
 variable "env" {

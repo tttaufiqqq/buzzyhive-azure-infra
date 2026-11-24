@@ -53,6 +53,9 @@ resource "azurerm_role_assignment" "pipeline_contributor" {
   scope                = azurerm_resource_group.lab.id
   role_definition_name = "Contributor"
   principal_id         = azuread_service_principal.pipeline.object_id
+
+  # A new service principal may not have replicated yet; skip the lookup.
+  skip_service_principal_aad_check = true
 }
 
 # Contributor cannot create role assignments, which lab/ needs to do.
@@ -60,6 +63,8 @@ resource "azurerm_role_assignment" "pipeline_rbac_admin" {
   scope                = azurerm_resource_group.lab.id
   role_definition_name = "Role Based Access Control Administrator"
   principal_id         = azuread_service_principal.pipeline.object_id
+
+  skip_service_principal_aad_check = true
 }
 
 resource "azurerm_role_assignment" "readers" {
@@ -86,4 +91,6 @@ resource "azurerm_role_assignment" "pipeline_state" {
   scope                = data.azurerm_storage_account.state[0].id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azuread_service_principal.pipeline.object_id
+
+  skip_service_principal_aad_check = true
 }

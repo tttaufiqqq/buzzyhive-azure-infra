@@ -1,9 +1,12 @@
 subscription_id = "00000000-0000-0000-0000-000000000000"
 alert_email     = "you@example.com"
 
+# IoT Hub is not offered in Malaysia West, so it stays in Southeast Asia.
+# iothub_location = "southeastasia"
+
 # Feature toggles. Apply in phases and switch off what you do not need today.
 enable_iot      = true
-enable_function = true
+enable_function = false # the function code is not written yet
 enable_ml       = false
 
 # Leave images unset to deploy a placeholder first. Set them after pushing to ACR.

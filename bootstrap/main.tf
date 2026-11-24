@@ -23,7 +23,7 @@ provider "azurerm" {
 
 locals {
   tags = {
-    project    = var.project
+    project    = var.project_tag
     env        = var.env
     managed_by = "terraform"
   }
@@ -56,6 +56,17 @@ resource "azurerm_storage_account" "state" {
   }
 
   tags = local.tags
+}
+
+data "azurerm_client_config" "current" {}
+
+# The backend in foundation/ and lab/ uses Azure AD auth (use_azuread_auth). Owner
+# or Contributor is not enough for that: reading and writing blobs needs this
+# data-plane role. Role assignments can take a few minutes to take effect.
+resource "azurerm_role_assignment" "state_deployer" {
+  scope                = azurerm_storage_account.state.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 resource "azurerm_storage_container" "tfstate" {

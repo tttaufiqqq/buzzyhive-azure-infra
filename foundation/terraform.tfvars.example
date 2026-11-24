@@ -1,6 +1,7 @@
 subscription_id   = "00000000-0000-0000-0000-000000000000"
 alert_emails      = ["you@example.com"]
 budget_amount     = 100
+# enable_budget   = false  # set this if the apply says budgets are not supported on a free trial
 budget_start_date = "2026-11-01T00:00:00Z" # first day of the current month
 github_owner      = "your-github-user"
 github_repo       = "buzzyhive-azure-infra"

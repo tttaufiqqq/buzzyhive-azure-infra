@@ -30,6 +30,7 @@ resource "azurerm_subscription_policy_assignment" "require_tag" {
 
 # A budget only notifies. It does not stop spending.
 resource "azurerm_consumption_budget_subscription" "lab" {
+  count           = var.enable_budget ? 1 : 0
   name            = "budget-${var.project}-${var.env}"
   subscription_id = data.azurerm_subscription.current.id
   amount          = var.budget_amount

@@ -32,7 +32,7 @@ data "azurerm_subscription" "current" {}
 
 locals {
   tags = {
-    project    = var.project
+    project    = var.project_tag
     env        = var.env
     managed_by = "terraform"
   }

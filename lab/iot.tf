@@ -6,7 +6,7 @@ resource "azurerm_iothub" "this" {
   count               = var.enable_iot ? 1 : 0
   name                = local.names.iothub
   resource_group_name = local.rg
-  location            = local.location
+  location            = var.iothub_location # not offered in the resource group's region
   tags                = local.tags
 
   sku {

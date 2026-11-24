@@ -67,7 +67,7 @@ locals {
   base     = "${var.project}-${var.env}"
 
   tags = {
-    project    = var.project
+    project    = var.project_tag
     env        = var.env
     managed_by = "terraform"
   }

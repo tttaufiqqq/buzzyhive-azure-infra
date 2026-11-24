@@ -249,6 +249,7 @@ resource "azurerm_container_app" "flask" {
 # Neither runs inside the worker, or every replica would repeat them.
 
 resource "azurerm_container_app_job" "scheduler" {
+  count                        = local.use_placeholders ? 0 : 1 # the placeholder image never exits
   name                         = "laravel-schedule"
   resource_group_name          = local.rg
   location                     = local.location
@@ -319,6 +320,7 @@ resource "azurerm_container_app_job" "scheduler" {
 # Started by the pipeline before a new revision takes traffic:
 #   az containerapp job start --name laravel-migrate --resource-group <rg>
 resource "azurerm_container_app_job" "migrate" {
+  count                        = local.use_placeholders ? 0 : 1 # the placeholder image never exits
   name                         = "laravel-migrate"
   resource_group_name          = local.rg
   location                     = local.location

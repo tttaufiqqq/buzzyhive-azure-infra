@@ -20,6 +20,12 @@ variable "project" {
   }
 }
 
+variable "project_tag" {
+  type        = string
+  default     = "buzzyhive"
+  description = "Value of the project tag. Separate from var.project, which is a short prefix for resource names (Azure caps storage accounts at 24 characters)."
+}
+
 variable "env" {
   type    = string
   default = "lab"
@@ -38,10 +44,16 @@ variable "enable_iot" {
   description = "IoT Hub (free tier F1; only one per subscription)."
 }
 
+variable "iothub_location" {
+  type        = string
+  default     = "southeastasia"
+  description = "Region of the IoT Hub. IoT Hub is not offered in Malaysia West (checked with az provider show -n Microsoft.Devices), so it goes to the nearest region that has it. Devices reach it over the internet, so it need not sit next to the rest."
+}
+
 variable "enable_function" {
   type        = bool
-  default     = true
-  description = "Azure Function that forwards IoT Hub messages to Laravel. Needs enable_iot. Consumption (Y1) quota can be zero on a new subscription."
+  default     = false
+  description = "Azure Function app that forwards IoT Hub messages to Laravel. Needs enable_iot. Off by default: this repository creates the app but not the function code yet, and Consumption (Y1) quota can be zero on a new subscription."
 }
 
 variable "enable_ml" {
