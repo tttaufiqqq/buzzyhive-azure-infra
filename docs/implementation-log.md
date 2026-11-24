@@ -73,7 +73,7 @@ Host [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readines
 | 24/11/2026 | Device simulator through IoT Hub | A device was registered and `scripts/simulate_device.py` sent 10 readings that reached the hub. Nothing forwards them to Laravel yet. The create command printed the device keys. See [Deploy 4.7](deploy.md#47-send-readings-through-iot-hub) |
 | 24/11/2026 | Azure ML job files written and the training command run locally | Not run on Azure. The local run showed the model.pkl committed in the app repo is stale against its own model_metadata.json (k=1 on 140 rows, against k=7 on 1600 rows). See [Train the model in Azure ML](azure-ml.md) |
 | | Azure ML training run on Azure | Not started |
-| | IoT Hub forwarder Function | Not written |
+| | IoT Hub forwarder Function | Written on 25/11/2026. Runs on Flex Consumption in East US after classic plans failed on a quota of 0 (troubleshooting 40). Checked with a simulated device |
 | | `terraform destroy` in `lab` | Not run when this was written |
 
 ### 3.1 Offline checks before the first apply
@@ -147,7 +147,7 @@ The items on the "not verified" list written before the first apply came out lik
 - Is 4 vCPUs of DSv2 enough? One `Standard_DS3_v2` training node uses all of it. Not tested, because the ML workspace is off.
 - Do budgets work on a Free Trial subscription? Yes, as above. Answered.
 - Can the tenant create Entra groups and app registrations with Terraform? Yes. The `foundation` apply created the groups, the managed identity and the OIDC app registration, with no errors.
-- Is the Function better placed in the VNet (Flex Consumption) so it can call an internal ingress? Still open, and the Function code is not written.
+- Is the Function better placed in the VNet so it can call an internal ingress? Still open. It runs on Flex Consumption outside the VNet and calls the public ingress.
 - Why is the first page load slow, and does `min_replicas = 1` on `laravel-web` fix it? Open (troubleshooting 31).
 - Should the stale `model.pkl` and `scaler.pkl` in the app repo be replaced by the retrained pair, and does the retrained model pass the guardrail check? Open ([Azure ML](azure-ml.md)).
 - Should Application Insights get an SDK in each image, or should the docs drop the claim? Open (troubleshooting 32).

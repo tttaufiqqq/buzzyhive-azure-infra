@@ -516,3 +516,50 @@ The same event created a second problem. The new registry is a Basic registry wi
 <img src="evidence/127-azureml-submit-completed-stream-error.png" alt="submit script output showing an XML AuthenticationFailed error followed by Final status Completed" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 39.1. The submit script's output: the XML `AuthenticationFailed` error from the storage account while streaming, then `Final status: Completed`. The subscription ID in the link is covered.*
 
+## 40. The Function's App Service plan cannot be created: only Flex Consumption worked
+
+**Symptom:** with `enable_function = true`, `terraform apply` created the IoT Hub shared access policy and then failed on the App Service plan, five times in a row with different plan types and regions. The sixth attempt, Flex Consumption, worked.
+
+| # | Attempt | Result |
+|---|---|---|
+| 1 | `Y1` (Consumption), Malaysia West | `400`, `Requested features are not supported in region` (extended code 59911) |
+| 2 | `B1`, Malaysia West | `409`, `No available instances to satisfy this request` (03029): a temporary capacity shortage, so the quota there is unknown |
+| 3 | `B1`, Southeast Asia | `401`, `Current Limit (B1 App Service instances): 0` (70007) |
+| 4 | `Y1`, Southeast Asia | `401`, `Current Limit (Y1 App Service instances): 0` |
+| 5 | `Y1`, East US | `401`, `Current Limit (Y1 App Service instances): 0` |
+| 6 | Flex Consumption (`FC1`), East US | **Created in 55 seconds.** Code uploaded and a device message forwarded |
+
+**What was checked:**
+
+- `az functionapp list-consumption-locations` **does** list `malaysiawest`, so that list did not predict attempt 1. East US is listed for Consumption, Flex and `B1`, and the first of those still failed on quota.
+- `az functionapp list-flexconsumption-locations` lists `malaysiawest`, `southeastasia` and `eastus`.
+- `az appservice list-locations --sku B1 --linux-workers-enabled` lists Malaysia West, Southeast Asia and East US.
+
+**Cause:** the Free Trial subscription has a quota of 0 for classic App Service plan instances (`B1` and `Y1`), shown in two regions for `Y1` and one for `B1`. Why attempt 1 was refused for region support was not determined. Flex Consumption has its own regional memory quota, which was not 0.
+
+**Fix:** a `function_hosting` variable chooses how the Function is hosted. The default is now `flex`, which creates an `FC1` plan, a blob container `function-deploy` in the existing storage account, and `azurerm_function_app_flex_consumption` with 512 MB instances (at most 10). It leaves out the app settings that Flex does not take (`SCM_DO_BUILD_DURING_DEPLOYMENT`, `ENABLE_ORYX_BUILD`, `FUNCTIONS_WORKER_RUNTIME`). The classic route stays available as `function_hosting = "plan"` for a subscription that has the quota. `function_location = "eastus"` in the git-ignored `lab/terraform.tfvars` put the app in East US while the storage account stays in Malaysia West. Microsoft calls same-region storage a performance recommendation, not a rule, outside the portal, and it worked.
+
+**Verified on 25/11/2026:**
+
+- `scripts/deploy-function.ps1` uploaded the zip with `az functionapp deployment source config-zip --build-remote true` and `forward_reading` was registered.
+- `scripts/simulate_device.py` sent three readings through IoT Hub. Laravel stored three predictions at the matching times (07:39:47, 07:39:52 and 07:39:56 local time), with the values that were sent, and no Telegram alert ran.
+
+**Not known:** the cost (Flex is pay per use and scales to zero, an estimate, not measured), the cold start time, and whether the classic route works on a subscription that has quota.
+
+**Lessons:**
+
+- A list of regions that offer a service does not guarantee that every SKU of it can be created there. Read the create error, not only the list.
+- Quotas are per plan family. The classic App Service quota was 0 while the Flex quota was not, so when one family is refused, try the other before giving up.
+- Azure's error suggested "try a different region". Taking that literally and widening the search cost five attempts, so check the quota family first.
+
+## 41. The Function replayed the IoT Hub's backlog when it first started
+
+**Symptom:** right after the first upload, Laravel's log showed 20 `ML prediction stored` entries within a few seconds (about 07:36 local time), about one per second, with temperatures that had not been sent that day. They came before the three readings sent for the test.
+
+**Cause:** the Event Hubs trigger starts at the beginning of the retained stream when it has no checkpoint. The hub still held the device messages from the 24/11/2026 test, because the free tier retains them for a day, so the Function forwarded all of them. Laravel stamps a reading with its arrival time, so the old readings were stored as new ones: 20 extra rows for hive 1, all `approaching`, and no Telegram alert.
+
+**Impact:** harmless in this lab, but it is duplicated data.
+
+**Fix:** `functions/forwarder/host.json` now sets `extensions.eventHubs.initialOffsetOptions.type` to `fromEnd`, so a fresh Function starts at the end of the stream. It only matters for the first start, because checkpoints exist afterwards. The running app was not redeployed with it, and it already has its checkpoint, so it will not replay again. The trade-off: messages sent before the first start are skipped.
+
+**Status:** the setting is written but has not run. The 20 replayed rows were not removed.

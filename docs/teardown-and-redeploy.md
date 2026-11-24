@@ -134,6 +134,7 @@ Prerequisites: `az login`, Terraform, Docker in WSL, the application repository 
    ```
    It builds both images in WSL, pushes them with the admin user switched on only for the push, applies again, runs the migration Job, seeds the database and registers the IoT device. If it fails, fall back to the manual order in [Deploy](deploy.md).
    The `flask-ml` image already carries the retrained model, because the model files are in the application repository's `ml/` folder.
+   If `enable_function = true`, also run `.\scripts\deploy-function.ps1` once the apply has finished. Terraform creates the Function app, but the code is uploaded separately. On this subscription the settings that worked are `function_hosting = "flex"` and `function_location = "eastus"`, and they live in the git-ignored `lab/terraform.tfvars`, so keep them in the backup.
 5. **Azure ML, if wanted.** Set `enable_ml = true` and follow [the Azure ML article](azure-ml.md). Delete the registry it creates at the next teardown.
 
 ## 6. What proves it worked
@@ -145,6 +146,7 @@ Prerequisites: `az login`, Terraform, Docker in WSL, the application repository 
 | `laravel-migrate` Job | `Succeeded` |
 | `python scripts/simulate_sensor.py` with the baseline profile | `201`, a stored prediction, and no Telegram message (the baseline is `approaching` under the retrained model) |
 | k6 smoke profile | 31 of 31 `201` |
+| A reading sent with `scripts/simulate_device.py` (only when the Function is enabled) | It reaches Laravel through IoT Hub and the Function, and is stored with a prediction |
 | `az containerapp revision list` for each app | One revision, `Healthy`, 100 % traffic |
 
 Idempotence is the first row. Create-then-destroy twice with the same results is what shows the Terraform is repeatable, and a plan with changes after a fresh apply means something is not declared (as happened with the Consumption workload profile and the Azure ML registry).

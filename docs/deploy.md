@@ -263,7 +263,7 @@ App\Models\IotNode::where('device_status','active')->limit(5)->get(['hive_id','n
 
 ### 4.7 Send readings through IoT Hub
 
-`scripts/simulate_sensor.py` (section 5) posts straight to Laravel and never touches the hub. `scripts/simulate_device.py` sends the same readings as device-to-cloud telemetry, so the hub's Devices list and message metrics have something to show. Nothing forwards those messages to Laravel yet, because the Function code is not written. They stop at the hub.
+`scripts/simulate_sensor.py` (section 5) posts straight to Laravel and never touches the hub. `scripts/simulate_device.py` sends the same readings as device-to-cloud telemetry, so the hub's Devices list and message metrics have something to show. Nothing forwards those messages to Laravel unless the Function is enabled and its code uploaded (section 4.8), so with the Function off they stop at the hub.
 
 1. **Install the SDK and the CLI extension:** `pip install azure-iot-device`, and `az extension add --name azure-iot`.
 2. **Check the hub starts empty.** Terraform creates the hub but no devices.
@@ -306,10 +306,10 @@ Ten messages were sent in 0.10 to 0.31 s each, and `monitor-events` printed each
 <img src="evidence/85-iothub-devices-list.png" alt="IoT Hub Devices blade listing the device NODE-28ZRUR: IoT Device, Enabled, Shared Access Signature, no C2D messages queued" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 4.30. After: the device is in the list, `Enabled`, authenticating with a shared access signature.*
 
-### 4.8 Not built yet
+### 4.8 Not built or not run yet
 
-- **Function code.** `enable_function` creates the Function app, but this repository does not contain the function that forwards IoT Hub messages to Laravel. It is off by default. Until it exists, readings reach Laravel only through the app's own HTTP endpoint, so the simulator should post there.
-- **Azure ML training.** The job files exist and were checked locally, but nothing has run on Azure. See [Train the model in Azure ML](azure-ml.md).
+- **The forwarder Function** was added after this first deploy and runs on Flex Consumption. In `lab/terraform.tfvars` set `enable_function = true`, `function_hosting = "flex"`, `function_location = "eastus"` (the region where this subscription allowed it) and `function_api_key` (the `iot-api-key` value), apply `lab`, then run `.\scripts\deploy-function.ps1`. Classic App Service plans failed on a quota of 0 (troubleshooting 40).
+- **Azure ML training** was run after this first deploy and is written up in [Train the model in Azure ML](azure-ml.md).
 - **Front Door, the load test and the plan and apply jobs in CI.**
 
 After the first deploy, the GitHub Actions workflow runs `terraform fmt -check`, `validate` and `tflint`. Plan and apply jobs are not added yet.
@@ -320,7 +320,7 @@ Record the duration of each apply, and the real errors you hit, in the [implemen
 
 ## 5. Test
 
-`scripts/simulate_sensor.py` stands in for the ESP32. It posts a reading straight to the app's `/api/sensor-data` with the shared key. It does not go through IoT Hub, because the Function code does not exist yet. It uses only the Python standard library, and it takes the URL and key from environment variables so the key stays out of the command line:
+`scripts/simulate_sensor.py` stands in for the ESP32. It posts a reading straight to the app's `/api/sensor-data` with the shared key. It does not go through IoT Hub, so it does not depend on the Function. It uses only the Python standard library, and it takes the URL and key from environment variables so the key stays out of the command line:
 
 ```powershell
 $env:BUZZYHIVE_URL     = "https://<your laravel-web URL>"
@@ -346,7 +346,7 @@ The sensors dashboard renders stored readings: gas gauges for MQ-2, MQ-3, MQ-5 a
 
 This shows the API, the database and the ML service working together. A `201` means the reading was stored, and a response with no warning means the app got a prediction from `flask-ml`. I did not open the dashboard after it, so what is still unchecked, from the [data flow](architecture.md#2-data-flow):
 
-- The Function logs show one invocation per message. (There is no Function code yet.)
+- The Function logs show one invocation per message. (Only once the Function is deployed: section 4.8.)
 - The stored `predictions` row, and the dashboard updating live through Pusher.
 - A Ready prediction sends a Telegram alert from the worker.
 

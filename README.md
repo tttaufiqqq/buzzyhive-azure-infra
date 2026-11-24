@@ -3,7 +3,7 @@
 This is a learning project. It designs how to run [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readiness-Prediction), a kelulut (stingless bee) harvest readiness platform, on Azure with Docker containers and Terraform, using services such as Azure IoT Hub, Container Apps and Azure Machine Learning.
 
 > [!NOTE]
-> This is a personal learning design. It is not official Microsoft guidance. On 24/11/2026 the three Terraform roots were applied once to a Free Trial subscription, the app images ran on Container Apps, and a simulated device produced predictions. The IoT Hub forwarder Function and the CI plan and apply jobs are not built, the lab has not been destroyed and re-created, and the cost of the run is not measured. Service prices are estimates, and each one is labelled that way.
+> This is a personal learning design. It is not official Microsoft guidance. On 24/11/2026 the three Terraform roots were applied once to a Free Trial subscription, the app images ran on Container Apps, and a simulated device produced predictions. The IoT Hub forwarder Function runs on Flex Consumption and forwarded a simulated device's readings to Laravel, the CI plan and apply jobs are not built, the lab has not been destroyed and re-created, and the cost of the run is not measured. Service prices are estimates, and each one is labelled that way.
 
 <img src="docs/architecture/network-and-runtime.png" alt="Azure architecture page 1: ESP32 or simulator to IoT Hub to Function to Container Apps (laravel-web, flask-ml, worker, Jobs) with MySQL, private endpoints, Key Vault, a private and a public Storage account, ACR, Azure ML and monitoring" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Page 1, network and runtime: how a sensor reading travels from the ESP32 to the dashboard. Source: [`docs/architecture/architecture.drawio`](docs/architecture/architecture.drawio).*
@@ -11,7 +11,7 @@ This is a learning project. It designs how to run [BuzzyHive 2.0](https://github
 ## Summary
 
 - **Goal:** move BuzzyHive from Exabytes shared hosting to containers on Azure, and learn IoT Hub, Container Apps, Azure ML, private networking, governance and CI/CD with OIDC on the way.
-- **Approach:** three container apps (`laravel-web`, `laravel-worker`, `flask-ml`) in a VNet, MySQL Flexible Server on a private subnet, IoT Hub, and Azure ML for training. Everything is defined in Terraform and applied by hand. An IoT Hub forwarder Function and a CI plan and apply pipeline are designed but not built, and GitHub Actions only runs `fmt`, `validate` and `tflint`.
+- **Approach:** three container apps (`laravel-web`, `laravel-worker`, `flask-ml`) in a VNet, MySQL Flexible Server on a private subnet, IoT Hub, and Azure ML for training. Everything is defined in Terraform and applied by hand. The IoT Hub forwarder Function runs on Flex Consumption (classic App Service plans failed on a quota of 0), a CI plan and apply pipeline is designed but not built, and GitHub Actions only runs `fmt`, `validate` and `tflint`.
 - **Run time:** the environment is meant to run for about a day, then be destroyed.
 
 ## Status
@@ -28,7 +28,8 @@ This is a learning project. It designs how to run [BuzzyHive 2.0](https://github
 | Load test (k6) | Four runs. A probe restart and a MySQL deadlock were found and fixed. At 10 requests per second the single web replica reaches its CPU limit. See [the load test](docs/load-test.md) |
 | Azure ML | A job trained the readiness model on Azure, it was registered, compared with the stale model in service, and deployed. See [Azure ML](docs/azure-ml.md) |
 | Destroy, re-creation and measured cost | **Not done yet.** The runbook is [Teardown and redeploy](docs/teardown-and-redeploy.md), marked not run |
-| IoT Hub forwarder function, CI plan and apply | Not written yet |
+| IoT Hub forwarder Function | Deployed on Flex Consumption in East US. Three readings from a simulated device reached Laravel through IoT Hub and the Function on 25/11/2026. Classic App Service plans failed on a quota of 0 ([troubleshooting 40](docs/troubleshooting.md)) |
+| CI plan and apply | Not written yet |
 
 What was found along the way, and what is still open, is in the [implementation log](docs/implementation-log.md).
 
@@ -46,7 +47,8 @@ Deployed on 24/11/2026:
 
 | Resource | Purpose | Note |
 |---|---|---|
-| IoT Hub (free tier) | Receives device readings over MQTT | A simulator sent readings to the hub. Nothing forwards them to Laravel yet |
+| IoT Hub (free tier) | Receives device readings over MQTT | A simulated device sent readings, and the Function forwards them to Laravel |
+| Azure Function on Flex Consumption (East US), with a blob container for its code | Forwards each IoT Hub message to `laravel-web` | Needs `enable_function` and `function_hosting = "flex"`. On its first start it replayed 20 older readings still held in the hub ([troubleshooting 41](docs/troubleshooting.md)) |
 | Container Apps environment: `laravel-web`, `laravel-worker`, `flask-ml`, plus the `laravel-migrate` and `laravel-schedule` Jobs | Web app, queue worker, ML API, scheduler and migrations | Verified, including Telegram alerts |
 | MySQL Flexible Server (Burstable B1ms) in a delegated subnet | Application database, no public endpoint | |
 | Key Vault, private endpoints, private DNS zones | Secrets reached over Private Link | |
@@ -61,7 +63,7 @@ Defined in Terraform but not deployed, or not built:
 
 | Resource | Why |
 |---|---|
-| Azure Function (`enable_function`) | Off, and the function code that forwards IoT Hub messages to Laravel is not written |
+
 | Resource group locks | Behind a variable (`enable_locks`), off in the lab because a lock makes `terraform destroy` fail |
 | Front Door Standard, Azure Load Testing | Optional, never deployed. The load test used k6 from a laptop instead |
 
@@ -76,7 +78,7 @@ For a full explanation, see [Architecture](docs/architecture.md).
 
 - **Applied once, not repeated.** The steps in [Deploy](docs/deploy.md) were run once, in order, and hit two Terraform errors and several tooling problems along the way (all fixed and written up). I have not destroyed and re-created the environment, so a clean second run and the teardown script (`scripts/down.ps1`) are untested. The runbook is [Teardown and redeploy](docs/teardown-and-redeploy.md).
 - **Synthetic ML data.** The KNN model is trained on a synthetic dataset, so Azure ML here is a pipeline exercise, not a modelling one.
-- **No Function code.** The Function app can be created (`enable_function`), but the function that forwards IoT Hub messages to Laravel is not written yet, so the IoT Hub path is incomplete. It is off by default.
+- **The Function runs on Flex Consumption in East US, and was checked with a simulated device only.** Classic App Service plans failed on a Free Trial quota of 0 in three regions ([troubleshooting 40](docs/troubleshooting.md)). The API key is a plain app setting, and on its first start the Function replayed 20 readings that were still held in IoT Hub. The real ESP32 has not been tried.
 - **Simulated device.** The real ESP32 firmware posts plain HTTP with an API key. Talking to IoT Hub needs firmware changes, so the lab uses a Python device simulator.
 - **One environment.** There is a single `rg-hive-lab` group with no separate dev or staging.
 - **No telemetry in Application Insights.** The resource exists, but the images contain no SDK, so it received no data. Logs are read from Log Analytics instead.
@@ -105,7 +107,7 @@ For a full explanation, see [Architecture](docs/architecture.md).
 2. Entra groups and RBAC
 3. Terraform state storage and the GitHub OIDC pipeline
 4. Network, MySQL, Key Vault, Storage, ACR
-5. Container Apps and IoT Hub (the Function is not built)
+5. Container Apps and IoT Hub with the Function (Flex Consumption)
 6. Monitoring and alerts
 7. Azure ML, and a load test with k6 (Azure Load Testing was not used)
 
@@ -155,6 +157,7 @@ On Azure:
 | Telegram alert | A `ready` reading produced one message, delivered by a queue retry after a leading space in the saved chat ID was fixed ([troubleshooting 36](docs/troubleshooting.md)) |
 | k6 ramp to 10 requests per second | Run 1: 50 of 3,292 failed (a probe restart). Run 2: 149 of 3,251 failed (MySQL deadlocks). Run 3 after the fixes: 0 of 3,299 failed, p95 154 ms. Run 4 on the retrained model: 0 of 3,293 failed, p95 2.22 s with the web replica at its CPU limit |
 | Azure ML job | Trained a `k = 7`, distance-weighted KNN on 1,600 rows, matching the local run. It differs from the stale model in service on 943 of 1,600 rows |
+| IoT Hub to Laravel through the Function | Three simulated-device readings reached Laravel and were stored with predictions at the times they were sent. On its first start the Function also replayed 20 older readings from the hub |
 | Cost of the run | **Not measured yet** |
 
 Why the images are built this way: [Docker images](docs/docker.md). The problems found before deploying, and how each was found: [Implementation log](docs/implementation-log.md#4-problems-found-before-deployment). The ten found while applying: [section 5](docs/implementation-log.md#5-problems-found-while-applying).
