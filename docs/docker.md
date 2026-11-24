@@ -3,7 +3,7 @@
 This article explains why each choice in the two container images was made, with measurements, and how they run on Azure. The Docker files and the app's own requirements live in the [application repository](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readiness-Prediction) (`docs/docker/docker.md`), because they belong to the app. This repository only runs the result.
 
 > [!NOTE]
-> Everything here was built and run with Docker 29.7 in WSL2 (Ubuntu) on a laptop, and the numbers are from that machine. Throughput figures come from one 15-second run per case, so treat differences of a few percent as noise. Nothing here has run on Azure yet.
+> Everything here was built and run with Docker 29.7 in WSL2 (Ubuntu) on a laptop, and the numbers are from that machine. Throughput figures come from one 15-second run per case, so treat differences of a few percent as noise. On 2026-11-24 the same images were also pushed to the registry and ran on Container Apps; section 7 records how, and section 5 what that did and did not show.
 
 ## 1. What the app needs, and where this repository provides it
 
@@ -125,7 +125,7 @@ Compose started the whole stack: MySQL 8.0, flask-ml, the one-shot migrate step,
 - **Only amd64.** Container Apps runs amd64, and the build machine is amd64.
 - **The first request is slow.** 1.6 s while opcache and the database connection warm up. A readiness probe on `/up` does not warm them.
 - **Uploads are not durable.** See [troubleshooting](troubleshooting.md#18-hive-images-and-the-thesis-pdf-disappear).
-- **Not run on Azure.** Image pull time from ACR, the ingress and the Key Vault references are untested.
+- **Run on Azure, mostly.** Both images were pulled from the registry by the managed identity and ran on Container Apps. The `laravel-migrate` Job read its database settings and secrets from Key Vault and succeeded, and the ingress served the site. Image pull time from the registry and cold-start time are not measured. Cold start is suspected in a slow first page load that is still unexplained; see [troubleshooting](troubleshooting.md#31-the-first-page-load-is-slow).
 
 ## 6. Build and run
 
@@ -143,4 +143,53 @@ docker build -t buzzyhive/laravel:local .
 docker build -t buzzyhive/flask-ml:local ml
 ```
 
-Without a local Docker, build in the registry: `az acr build -r <acr> -t laravel:latest .` and `az acr build -r <acr> -t flask-ml:latest ml`. Pass `--build-arg VITE_PUSHER_APP_KEY=...` for the Laravel image.
+`az acr build` is not an option for this lab. ACR Tasks is not offered in Malaysia West, and the command fails with `NoRegisteredProviderFound` (see [troubleshooting](troubleshooting.md#25-az-acr-build-fails-in-malaysia-west)). Build locally and push, as in the next section.
+
+The two files below are the ones the commands above build and run. They live in the application repository, not this one. The first shows the top of the Laravel `Dockerfile`: the base images as build arguments, a separate Node stage, the `base` stage that adds `pdo_mysql`, `opcache` and `pcntl`, and the `vendor` stage that caches Composer dependencies until `composer.lock` changes. The comment on the asset stage explains why it needs PHP as well as Node: the Wayfinder plugin runs `php artisan wayfinder:generate` during the Vite build.
+
+<img src="evidence/89-dockerfile-laravel.png" alt="The Laravel Dockerfile in the editor: ARG PHP_IMAGE dunglas/frankenphp 1-php8.3-alpine and NODE_IMAGE node:22-alpine, a node stage, a base stage installing pdo_mysql opcache and pcntl, and a vendor stage running composer install with a cache mount" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 6.1. The top of the Laravel `Dockerfile` (lines 19 to 48): Alpine base images, the Node stage, the `base` and `vendor` stages.*
+
+The second shows the start of `docker-compose.yml`. The shared `x-laravel` block runs the same image for every Laravel role. It sets `APP_ENV: production`, database sessions, cache and queue, and `ML_URL: http://flask-ml:5000`. `BROADCAST_CONNECTION` is `log` in this file, so the local stack never calls Pusher. The `mysql` service starts with `--log-bin-trust-function-creators=1`, with a comment that Azure Flexible Server needs the same setting (`lab/data.tf`).
+
+<img src="evidence/90-docker-compose-yml.png" alt="docker-compose.yml in the editor: the x-laravel anchor with image buzzyhive/laravel:local, environment variables including DB_HOST mysql, SESSION_DRIVER database, BROADCAST_CONNECTION log and ML_URL http://flask-ml:5000, depends_on mysql and flask-ml healthy, and the mysql 8.0 service with the log-bin-trust-function-creators command" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 6.2. The start of `docker-compose.yml` (lines 7 to 37): the shared Laravel settings and the MySQL service with the trigger parameter.*
+
+## 7. Push the images to the registry
+
+Docker runs only inside WSL on this machine, so these run from Windows PowerShell through `wsl`. Each command must stay on one line, and the build needs its context (the final `.`).
+
+1. **Start the engine if it has stopped:** `wsl -u root -e bash -lc "service docker start"`, then `wsl -e docker ps` to check it answers.
+2. **Log in to the registry.** The token login failed here, and so did piping the admin password. What worked was passing the password in an environment variable (`$env:WSLENV = "ACR_PW"`) and `docker login <registry>.azurecr.io -u <user> -p "$ACR_PW"`. The full story, and why the admin user must be turned off again afterwards, is in [troubleshooting](troubleshooting.md#26-docker-login-to-the-registry-returns-unauthorized).
+3. **Build and push the Laravel image** with the Pusher build arguments, which are compiled into the JavaScript:
+
+   ```powershell
+   wsl -e docker build -t <registry>.azurecr.io/laravel:latest --build-arg VITE_PUSHER_APP_KEY=<key> --build-arg VITE_PUSHER_APP_CLUSTER=ap1 .
+   wsl -e docker push <registry>.azurecr.io/laravel:latest
+   ```
+
+4. **Build and push the ML image:**
+
+   ```powershell
+   wsl -e docker build -t <registry>.azurecr.io/flask-ml:latest ml
+   wsl -e docker push <registry>.azurecr.io/flask-ml:latest
+   ```
+
+5. **Check the registry:** `az acr repository list -n <registry> -o tsv` lists `flask-ml` and `laravel`.
+
+Both builds were fast because most layers were cached from the earlier local builds. The Laravel build took 15.2 seconds, and the ML build 4.4 seconds. A first build on a clean machine will take longer. The ML push mounted two layers from the Laravel repository, because the registry already held them.
+
+<img src="evidence/34-wsl-docker-start-and-laravel-build.png" alt="wsl starts the Docker service, docker ps shows an empty table, and docker build of the Laravel image runs with cached layers" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 7.1. The engine started, an empty `docker ps`, and the Laravel build under way (15.2 s, most layers cached).*
+
+<img src="evidence/35-laravel-image-push.png" alt="The Laravel image is exported and named for the registry, then docker push uploads its layers" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 7.2. The Laravel image is named for the registry and pushed layer by layer.*
+
+<img src="evidence/36-flask-ml-image-build.png" alt="docker build of the flask-ml image finishes in 4.4 seconds with every layer cached" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 7.3. The ML image build: 4.4 s, every layer cached. It includes the check that loads the model and scaler.*
+
+<img src="evidence/37-flask-ml-image-push.png" alt="docker push of flask-ml: some layers pushed, two mounted from laravel, and the final digest" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 7.4. The ML push. Two layers are mounted from the Laravel repository instead of uploaded.*
+
+<img src="evidence/38-acr-repository-list.png" alt="az acr repository list returns flask-ml and laravel" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 7.5. The registry now holds both repositories.*

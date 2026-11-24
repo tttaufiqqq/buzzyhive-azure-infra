@@ -3,7 +3,7 @@
 This log records how the infrastructure was planned, deployed, and fixed. It lists what happened, what failed, and why each decision was made.
 
 > [!NOTE]
-> The design, the Terraform scaffold and the Docker images are done and checked locally and in CI. A read-only preflight has been run against the real subscription. Nothing has been applied to Azure yet, so the apply entries below are left to fill in.
+> On 2026-11-24 all three Terraform roots were applied to a Free Trial subscription, the images were pushed, the database was migrated and seeded, and a simulated device posted readings that came back with predictions. The apply and the checks after it turned up ten problems, listed in section 5, and each has a write-up in [troubleshooting](troubleshooting.md). The Azure ML training run, the IoT Hub forwarder Function and CI plan and apply jobs are not done. The lab had not been destroyed when this was written, and real costs are not measured yet.
 
 ## 1. Goal
 
@@ -27,7 +27,7 @@ Host [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readines
 | Resource group | `rg-hive-lab` | `rg-hive-prod` contradicted the `env=lab` tag |
 | Policy effect | Audit, not deny | Deny can block the apply for resources Azure creates itself |
 | Budget | $100 | Credit remaining is $135.68 |
-| Laravel runtime | FrankenPHP in classic mode, Debian, non-root | One process per container, no supervisor. Details in [Docker images](docker.md) |
+| Laravel runtime | FrankenPHP in classic mode, Alpine, non-root | One process per container, no supervisor. Details in [Docker images](docker.md). An earlier version of this row said Debian; the measured choice below is Alpine |
 | ML runtime | `python:3.12-slim`, gunicorn, serving requirements only | No training stack in the image. scikit-learn pinned to match the pickle |
 | Config cache | At container start, not at build | Secrets from Key Vault must not be baked into the image |
 | Container command | `args`, not `command`, in Terraform | `command` would replace the entrypoint that caches the config |
@@ -39,6 +39,10 @@ Host [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readines
 | Pipeline roles | Contributor plus RBAC Administrator | Contributor cannot create role assignments |
 | Region | Malaysia West, IoT Hub in Southeast Asia | `az provider show -n Microsoft.Devices` lists no Malaysia West for IoT Hubs. An earlier draft chose Southeast Asia on an unchecked assumption that Malaysia West had fewer services |
 | Edge | Front Door Standard, optional | WAF managed rules need Premium at about $330 per month |
+| Image build | Docker in WSL, then `docker push` | `az acr build` fails in Malaysia West because ACR Tasks is not offered there (troubleshooting 25) |
+| Registry login for the push | Temporary admin user, password passed in an environment variable | Token login and a piped password both returned unauthorized (troubleshooting 26). The apps pull with the managed identity, so the admin user is only a build-time workaround |
+| Seeding the database | A one-off run of the migrate Job with `php artisan db:seed` and `APP_ENV=staging` | `az` cannot pass `--force` or `--class=` as separate arguments (troubleshooting 30). The Job is restored with `terraform apply` afterwards |
+| Smoke test | `scripts/simulate_sensor.py` posting to `/api/sensor-data` | The Function code does not exist, so the IoT Hub path is not tested. The script uses the standard library only |
 
 ## 3. Timeline
 
@@ -55,10 +59,31 @@ Host [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readines
 | 2026-11-24 | First push to GitHub triggered CI | `terraform fmt -check`, `validate` and `tflint` passed for all three roots (4 jobs, 17 seconds) |
 | 2026-11-24 | App test suite run in a throwaway container against the changed app code | 168 tests, 842 assertions, all pass |
 | 2026-11-24 | `scripts/preflight.sh` run against the real Free Trial subscription | Providers registered, MySQL B1ms offered in Malaysia West, quota 4 vCPUs (4 for DSv2), IoT Hub listed for Southeast Asia. Two checks had bugs of their own (see section 4), fixed and re-run clean |
-| | Root 1: bootstrap, first apply | Not started |
-| | Root 2: foundation, first apply | Not started |
-| | Root 3: lab, first apply | Not started |
+| 2026-11-24 | Root 1: `bootstrap`, first apply | 5 added in about two minutes. State storage account in `rg-hive-iac`, Malaysia West. See [Deploy 4.2](deploy.md#42-bootstrap-state-storage) |
+| 2026-11-24 | Root 2: `foundation`, first apply | 17 added, no errors. The budget and both policy definition IDs were accepted. See [Deploy 4.3](deploy.md#43-foundation-resource-group-governance-identity) |
+| 2026-11-24 | Root 3: `lab`, first apply | Stopped on two errors, the Container Apps subnet delegation and the IoT Hub partition count. Both were Terraform bugs and are fixed (troubleshooting 23, 24) |
+| 2026-11-24 | Root 3: `lab`, second apply, placeholder images | 5 added, 1 changed. The IoT Hub took 4 min 9 s and each Container App 40 to 48 s |
+| 2026-11-24 | Images built in WSL and pushed to the registry | `az acr build` is unavailable in this region; the registry login needed a workaround (troubleshooting 25 to 27) |
+| 2026-11-24 | Root 3: `lab`, third apply, real images | 2 added (the Jobs), 4 changed. A state-lock error delayed the plan (troubleshooting 28). A typo in the `flask` image tag went unnoticed (troubleshooting 29) |
+| 2026-11-24 | `laravel-migrate` Job started | Succeeded on the first run. Landing page served from the Container Apps URL |
+| 2026-11-24 | Database seeded through the migrate Job | Failed twice on how `az` passes arguments, then succeeded with `php artisan db:seed` (troubleshooting 30) |
+| 2026-11-24 | Simulator run against the app | `422` before seeding, `201` with `ml_unavailable` after, because of the image-tag typo |
+| 2026-11-24 | `flask-ml` tag fixed and applied | 0 added, 6 changed. New revision `Running` and `Healthy`. Five readings returned `201` in 0.17 to 0.29 s with no warning |
+| 2026-11-24 | Portal walk-through of the deployed lab | Network, ingress, identity, alerts, policy and state all matched the design, apart from Application Insights, which showed no data. The VNet is named `vnet-hive-lab`, not `vnet-hive` as the docs said. See [Architecture, section 8](architecture.md#8-what-the-portal-showed-after-the-first-apply) |
+| 2026-11-24 | Device simulator through IoT Hub | A device was registered and `scripts/simulate_device.py` sent 10 readings that reached the hub. Nothing forwards them to Laravel yet. The create command printed the device keys. See [Deploy 4.7](deploy.md#47-send-readings-through-iot-hub) |
 | | Azure ML training run | Not started |
+| | IoT Hub forwarder Function | Not written |
+| | `terraform destroy` in `lab` | Not run when this was written |
+
+### 3.1 Offline checks before the first apply
+
+Before any apply, `terraform fmt -check`, `init -backend=false` and `validate` ran in each root. All three passed.
+
+<img src="evidence/02-offline-checks-bootstrap-foundation.png" alt="PowerShell loop running terraform fmt, init with no backend and validate in the bootstrap and foundation roots, both reporting that the configuration is valid" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.1. The offline checks in `bootstrap` and the start of `foundation`.*
+
+<img src="evidence/03-offline-checks-foundation-lab.png" alt="The end of the same loop: foundation and lab both initialise and report that the configuration is valid" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.2. The end of the same run: `foundation` and `lab` valid. Everything these checks missed is in section 5.*
 
 ## 4. Problems found before deployment
 
@@ -80,15 +105,54 @@ Found before any resource existed in Azure, mostly by building and running the i
 | A placeholder image never exits, so a per-minute Job would pile up runs | Review | Runaway executions and cost | Jobs are created only once real images are set |
 | A Functions Consumption plan generally cannot use storage behind a private endpoint | Review, from memory | The Function fails to start | A separate public storage account (troubleshooting 15) |
 
-## 5. Open questions
+The first run of the preflight, on the real subscription, gave two wrong answers. Its MySQL check crashed on a JMESPath error (`contains()` was given `null`) and printed `could not list SKUs`, and it said the IoT Hub was **not** listed for Southeast Asia, which is false. It also registered `Microsoft.App`, which was `NotRegistered`. Both checks were fixed and re-run clean (the clean run is in [Deploy 4.1](deploy.md#41-preflight)).
 
-- Does MySQL B1ms have free capacity in Malaysia West right now? The preflight shows it is offered, which does not prove capacity.
-- Is 4 vCPUs of DSv2 enough? One `Standard_DS3_v2` training node uses all of it.
-- Do budgets work on a Free Trial subscription? (`enable_budget` is the fallback.)
-- Can the tenant create Entra groups and app registrations with Terraform?
-- Is the Function better placed in the VNet (Flex Consumption) so it can call an internal ingress?
+<img src="evidence/05-preflight-first-run-false-results.png" alt="First preflight run: Microsoft.App being registered, an invalid jmespath query error for the MySQL SKU check, and IoT Hub reported as not listed for southeastasia" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 4.1. The first preflight run against the real subscription, with both wrong results.*
 
-## 6. Lessons
+## 5. Problems found while applying
+
+Found by running the Terraform and the steps after it on 2026-11-24. Every one of these passed `terraform validate`, so none could have been found by the offline checks. "Running" means it happened. Each has a symptom-to-fix write-up.
+
+| Problem | Effect | Fix | Troubleshooting |
+|---|---|---|---|
+| The Container Apps subnet had no delegation to `Microsoft.App/environments` | The environment was rejected with a 400, which stopped the first `lab` apply | `delegation` block on `snet-aca` | [23](troubleshooting.md#23-the-container-apps-environment-is-rejected-the-subnet-is-not-delegated) |
+| The provider's IoT Hub default of 4 partitions is invalid for the F1 tier | The hub was rejected with IH400016 | `event_hub_partition_count = 2` | [24](troubleshooting.md#24-iot-hub-creation-fails-on-the-partition-count-ih400016) |
+| ACR Tasks is not offered in Malaysia West | `az acr build` failed, and the docs had said to use it | Build with Docker in WSL and push | [25](troubleshooting.md#25-az-acr-build-fails-in-malaysia-west) |
+| `docker login` returned unauthorized three ways | No push possible | Password passed to WSL in an environment variable. The exact cause was not found | [26](troubleshooting.md#26-docker-login-to-the-registry-returns-unauthorized) |
+| The Docker engine in WSL had stopped, and one build command had no context | Build failed | Start the service as root, end the build with `.` | [27](troubleshooting.md#27-docker-build-fails-in-wsl-the-daemon-is-stopped-or-requires-1-argument) |
+| A dropped connection left the state blob leased with no lock metadata | The plan could not take the lock | `az storage blob lease break` | [28](troubleshooting.md#28-terraform-cannot-take-the-state-lock-after-a-dropped-connection) |
+| A typo in the image tag (`flask-ml:lates`) | `flask-ml` stayed on the placeholder revision, and readings returned `ml_unavailable` | Correct the tag and apply | [29](troubleshooting.md#29-readings-return-201-with-ml_unavailable-a-typo-in-the-image-tag) |
+| The migration creates tables only, and `az` mangles `--args` | The simulator got `422`, and the first two seeding attempts failed | `php artisan db:seed` with `APP_ENV=staging` | [30](troubleshooting.md#30-the-simulator-gets-422-and-seeding-the-database-through-the-migrate-job) |
+| Application Insights showed no data, though the apps carry its connection string | The Application map was empty and Live metrics could not connect. Likely no SDK in the images (unverified) | Not fixed | [32](troubleshooting.md#32-application-insights-shows-no-data) |
+| The first page load was slow | Cause not found (open) | Not fixed. `/up` answered in 0.06 s once warm | [31](troubleshooting.md#31-the-first-page-load-is-slow) |
+
+The items on the "not verified" list written before the first apply came out like this:
+
+| Expected to need fixing | What happened |
+|---|---|
+| The two Azure Policy definition IDs, written from memory | Accepted. The `foundation` apply completed |
+| The NSG rule on the Container Apps subnet (marked "verify") | The environment was created, and the site and Jobs worked. I did not test the rule on its own |
+| Budgets on a Free Trial | Created without errors, with `enable_budget` at its default |
+| A Functions Consumption plan in Malaysia West | Not tested. The Function is off |
+| Azure ML with its own public Key Vault, and the purge flags | Not tested. `enable_ml` is off |
+| Container Apps reading Key Vault secrets right after the role assignment | Worked on the first apply, with no retry |
+| Cost figures in the cost doc | Still estimates. The lab had not been destroyed, so there is no measured cost yet |
+| No vulnerability scan on the images | Still not done |
+
+## 6. Open questions
+
+- Did the MySQL B1ms server have capacity? Yes: it was created in Malaysia West during the first `lab` apply, so this is answered.
+- Is 4 vCPUs of DSv2 enough? One `Standard_DS3_v2` training node uses all of it. Not tested, because the ML workspace is off.
+- Do budgets work on a Free Trial subscription? Yes, as above. Answered.
+- Can the tenant create Entra groups and app registrations with Terraform? Yes. The `foundation` apply created the groups, the managed identity and the OIDC app registration, with no errors.
+- Is the Function better placed in the VNet (Flex Consumption) so it can call an internal ingress? Still open, and the Function code is not written.
+- Why is the first page load slow, and does `min_replicas = 1` on `laravel-web` fix it? Open (troubleshooting 31).
+- Should Application Insights get an SDK in each image, or should the docs drop the claim? Open (troubleshooting 32).
+- What did the day cost? Open until the destroy and a Cost analysis run. About $64.32 of this month's spend predates this project (see [Cost and teardown](cost-and-teardown.md#13-what-else-is-in-the-subscription)).
+- Is the exact cause of the registry login failure the PowerShell-to-`wsl` pipe? Probably, but not proven.
+
+## 7. Lessons
 
 - **Run it before reasoning about it.** Building and running the images exposed several problems that a design review had missed, such as the MySQL trigger, the build-time Pusher values and the missing proxy trust.
 - **Check an assumption before writing it into a diagram.** The region claim sat in the diagram and the docs until a one-line provider query disproved it.
@@ -96,6 +160,13 @@ Found before any resource existed in Azure, mostly by building and running the i
 - **Measure what can be measured.** The Alpine choice rests on a size and throughput comparison. The ML base choice rests on a failed build, not on a guess.
 - **Document an app's needs in the app.** The findings above are properties of the code, so they live in the app repository and this one links to them.
 
-More lessons go here once something has been applied and has broken.
+From the first apply:
+
+- **`validate` passing means little for Azure.** Both Terraform errors (the subnet delegation and the IoT Hub partitions) are rules Azure enforces at create time, and neither shows up offline.
+- **Check each app's revision after an apply.** A typo in an image tag was accepted by Terraform. The failed revision was hidden by an older one that kept serving, and the symptom surfaced three steps later as a 404 from the wrong service.
+- **A region can lack a service you assumed.** ACR Tasks is not offered in Malaysia West. The docs I had written said to use it, and I had not tried it. The same lesson as the IoT Hub region, one level down.
+- **A tool's quirk can look like a service failure.** The registry login failed three different ways, and a `curl` with the same credentials returned 200. Testing the credential outside the tool that failed separated "wrong credential" from "the tool mangled it".
+- **Read what an error says it is not.** A dropped connection and a stuck lock looked like the same lock error. The empty `terraformlockid` in the message is what ruled out `force-unlock`.
+- **Be careful with screenshots.** Some of the terminal and editor captures in `evidence/` show an email address, subscription identifiers or secret values that were typed into `terraform.tfvars`. Check each one before it is committed.
 
 Symptom-to-fix reference for expected problems: [Troubleshooting](troubleshooting.md).
