@@ -737,10 +737,52 @@ The script had already switched the admin user off again (`adminUserEnabled` was
 
 **What did not work:** reading the new identifier back from the database. MySQL is private, so the script has to go through the app container, and `az containerapp exec` is an interactive terminal session. Run from a script it connected and returned nothing, and the PHP I passed in it was broken by the quotes that Windows PowerShell 5.1 and `az.cmd` rewrite.
 
-**Fix:** the script no longer reads the name. It sets it. After the seed, a run of the migrate Job gives the first seeded node the device's name, unless a node already has it, and then the device is registered under that name. The PHP is sent as base64 in one argument (`php -r 'eval(base64_decode($argv[1]));' <base64>`), so no quote or bracket of it ever passes through PowerShell. This was tested here three ways: the four arguments arrive unchanged through a `.cmd` shim like `az.cmd`; the generated PHP parses; and run against the real Laravel app with a throwaway SQLite database it renamed one of three nodes and, run again, changed nothing.
+**Fix:** the script no longer reads the name. It sets it. After the seed, a run of the migrate Job gives the first seeded node the device's name, unless a node already has it, and then the device is registered under that name. The PHP is sent as base64, so no quote of it passes through PowerShell. I first tested this with a stand-in for `az.cmd`, with the generated PHP, and against the real Laravel app with a throwaway SQLite database, and called that enough. **It was not enough**: the first two real runs failed on the way to Azure, for two different reasons that none of those tests could see ([entry 49](#49-the-node-rename-fails-in-azcmd-with--was-unexpected-at-this-time) and [entry 50](#50-the-azure-cli-rejects--r-in-args-as-an-unrecognized-argument)). The final form, after both fixes, is in those entries.
 
-**Status:** not run against Azure yet. The next redeploy is its first real test. Until then, register the seeded name by hand (read `iot_nodes` in tinker and create the device under that name).
+**Status:** works, verified on the second redeploy on 25/11/2026 (after entries 49 and 50). `iot_nodes` then showed `id 1` as `NODE-28ZRUR`, with the other nodes keeping their random names, and 10 readings sent as `NODE-28ZRUR` reached the database with predictions. Entries 49 and 50 say what had to change first.
 
 **Side effect:** the first seeded node's identifier differs from what the seeder made. For a lab and a demonstration that is fine, and it is why the database shows one node with the same name as the device.
 
 **Lesson:** when a tool cannot be scripted to read a value, change the design so that the value is chosen instead of discovered.
+
+## 49. The node rename fails in `az.cmd` with `) was unexpected at this time`
+
+**Symptom:** on the second redeploy, `up.ps1` stopped at step 8, right after the seed:
+
+```text
+) was unexpected at this time.
+... python.exe -IBm azure.cli containerapp job update -n laravel-migrate ... --args php -r eval(base64_decode($argv[1])); <base64> -o none
+az containerapp job update ... failed with exit code 255
+```
+
+The update never reached Azure, so nothing was changed. The seed before it had succeeded, and the migrate Job was left set to the seed command until the next apply restored it.
+
+**Cause:** on Windows, `az` is a batch file, `az.cmd`, and it puts the arguments you give it inside a parenthesised block. An argument with a `)` in it, here `eval(base64_decode($argv[1]));`, ends that block early, and `cmd.exe` stops with that message. The batch file does nothing else than start `python.exe -IBm azure.cli`, which is visible in the error text.
+
+**Why my tests missed it:** I tested the arguments through a one-line `.cmd` stand-in. It had none of the structure of the real `az.cmd`, so it could not show the problem.
+
+**Fix:** `scripts/lib.ps1` has `Get-AzInvocation` and `Invoke-AzDirect`, which start the CLI's own `python.exe -IBm azure.cli` directly and skip the batch file. If `az` is not the Windows batch install, they fall back to plain `az`. The tests now send the arguments through that same `python.exe`.
+
+**Status:** fixed, and the next run got past it, into entry 50.
+
+**Lesson:** test with the real tool in the real wrapper. A stand-in that only looks similar proves nothing about a wrapper's quirks.
+
+## 50. The Azure CLI rejects `-r` in `--args` as an unrecognized argument
+
+**Symptom:** the rerun got past entry 49 and failed in the CLI itself:
+
+```text
+unrecognized arguments: -r eval(base64_decode($argv[1])); <base64>
+```
+
+(The same run also seeded the database a second time, because `-Seed` was passed again. Both seeds succeeded.)
+
+**Cause:** `--args` takes a list of values, and the CLI's argument parser (Python's `argparse`) reads any value that starts with a dash as one of its own options. `-r` is the PHP option that runs a string of code, and the parser did not know it, so it rejected it and everything after it. The parser makes one exception: a value that starts with a dash but contains a space is treated as a plain value.
+
+**Fix:** `-r` and the code are sent as one argument, `-r eval(base64_decode($argv[1]));`, with a space after the `-r`. PHP accepts an option with its value attached, and the leading space in the code is harmless. The command is now `php`, that argument, and the base64 payload, with no argument that is a bare option.
+
+**How it was checked:** the old form was reproduced in the Azure CLI's own `argparse` (the code and payload ended up as unrecognized arguments), and the new form kept all three values as `--args`. PHP ran the new form and received the payload as `$argv[1]`. Against the real Laravel app with a throwaway SQLite database it renamed one of three nodes and, run again, changed nothing. The helper's tests under Windows PowerShell 5.1 now include the CLI's parser, so a bare option in the arguments would fail them.
+
+**Status:** fixed and verified on the real deployment. The final run renamed the first seeded node to `NODE-28ZRUR`.
+
+**Lesson:** a command-line tool has its own parser in front of the program you meant to call, and arguments that look harmless to the shell can mean something to it.

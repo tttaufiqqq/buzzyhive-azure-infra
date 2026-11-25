@@ -145,6 +145,7 @@ The Function that forwards IoT Hub messages to Laravel was written, then hosted 
 - Third problem, found while preparing the device test: the seeder makes random node names, so a device registered in advance never matches (48). `up.ps1` now gives the first seeded node the device's name, which was tested offline against the real Laravel app, not yet against Azure.
 - A reading sent after the rebuild was verified: 10 readings reached the database through the Function, each with a prediction from the retrained model.
 - The final teardown ran through `down-all.ps1` in 32.4 minutes, and a read-only check afterwards found nothing of the project in the subscription and no soft-deleted workspace of ours, which confirms the fix for entry 45.
+- A second redeploy tested the device-name step against Azure and found two more problems, both in how the Azure CLI receives an argument (49: `az.cmd` and a `)`, 50: the parser and a bare `-r`). After the fixes it worked: the first seeded node became `NODE-28ZRUR` and readings sent as that device reached the database.
 - Not done: the measured cost, because Cost analysis lags.
 
 ## 4. Problems found before deployment

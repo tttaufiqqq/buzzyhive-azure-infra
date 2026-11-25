@@ -310,3 +310,23 @@ The soft-deleted workspace that the first teardown left behind ([troubleshooting
 *Figure 11.2. The portal's list of every resource in the subscription afterwards: only `NetworkWatcher_malaysiawest`, which Azure creates itself. The account name is covered.*
 
 **What this does not show:** the cost. Cost analysis lags 8 to 24 hours, so the total for 24/11/2026 to 26/11/2026 comes the next day.
+
+## 12. The second redeploy, 25/11/2026
+
+After the second teardown, `up-all.ps1` ran again from empty, to test the two changes that had only been checked offline: the node rename ([troubleshooting 48](troubleshooting.md)) and the retry of a failed apply. The Function app's name had a new random suffix, so these were new resources.
+
+| Attempt | Result |
+|---|---|
+| First, `up-all.ps1 -Seed` | Everything up to the seed worked. The node rename failed in `az.cmd` with `) was unexpected at this time` ([troubleshooting 49](troubleshooting.md)) |
+| Second, with that fixed and `-Seed` passed again | The database was seeded a second time (it succeeded), and the rename failed in the Azure CLI with `unrecognized arguments: -r ...` ([troubleshooting 50](troubleshooting.md)) |
+| Third, with that fixed and no `-Seed` | Finished in 24.7 minutes: the Function code uploaded, `forward_reading` registered, and `No changes` in `bootstrap`, `foundation` and `lab` |
+
+*Table 12.1. The second redeploy.*
+
+Read-only checks afterwards: the migrate Job's two executions were `Succeeded`, the IoT Hub held the device `NODE-28ZRUR`, the Job's command was back to `php artisan migrate --force`, `/up` returned 200, the registry admin user was `false` and MySQL public network access was `Disabled`.
+
+**The rename worked.** `iot_nodes` showed `id 1` as `NODE-28ZRUR`, and the other nodes kept their random names. Ten readings sent as `NODE-28ZRUR` with `--hive-id 1` reached the database (`sensor_logs` ids 3092 to 3094 were the newest), each with an `approaching` prediction from the retrained model. The newest readings were also inside the training range for the first time, with `out_of_distribution` at 0.
+
+**Not seen:** whether the apply retry or the registry login wait was needed. I did not see the first part of the third run, so I can neither say that they ran nor that they did not.
+
+**Still not known:** the measured cost, and a Telegram alert after a rebuild.
