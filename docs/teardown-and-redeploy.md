@@ -63,7 +63,9 @@ Anything else is something Terraform never owned. Before the destroy, the group 
 - **The registry Azure ML created** (untagged, admin user on). Certain.
 - **A second action group and a `smartDetectorAlertRules` entry** that Azure creates itself for Application Insights. Confirmed on 25/11/2026: they were `Application Insights Smart Detection` and `Failure Anomalies - appi-hive-lab`. Read the names before deleting anything.
 
-Check what each one is, then delete it:
+`scripts/down.ps1` now deletes these three itself, from an allowlist, after a y/N question. Anything else it finds is only reported, and the managed identity is left alone. If the lab is already destroyed, run only that step with `.\scripts\down.ps1 -CleanupOnly`. The selection logic was checked read-only against the live group on 25/11/2026 and picked exactly these three; the delete itself has not run yet.
+
+To do it by hand instead, check what each one is, then delete it:
 
 ```powershell
 az acr delete -n <registry name> -g rg-hive-lab --yes

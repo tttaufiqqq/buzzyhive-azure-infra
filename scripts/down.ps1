@@ -14,18 +14,27 @@
   If the destroy fails with ScopeLocked, set enable_locks = false in foundation and apply it first
   (troubleshooting 3). Locks are off in the lab by default.
 
-.PARAMETER Force    Skip typing the resource group name. Not recommended.
-.PARAMETER DryRun   Print what would happen. Runs no az or terraform command.
+.PARAMETER Force         Skip typing the resource group name and the y/N question. Not recommended.
+.PARAMETER DryRun        Print what would happen. Runs no az or terraform command.
+.PARAMETER CleanupOnly   Skip the terraform steps and only delete the leftovers (step 5). Use it when
+                         the lab is already destroyed, or after a run that stopped half way.
+
+  Step 5 also deletes what Terraform never owned, from a short allowlist: the registry that Azure ML
+  creates, and the Smart Detection action group and Failure Anomalies rule that Azure creates for
+  Application Insights. Anything else left in the group is only reported, never deleted. The managed
+  identity is left alone: the foundation root owns it.
 
 .EXAMPLE
   .\scripts\down.ps1 -DryRun
   .\scripts\down.ps1
+  .\scripts\down.ps1 -CleanupOnly
 #>
 [CmdletBinding()]
 param(
   [string]$ResourceGroup = "rg-hive-lab",
   [switch]$Force,
-  [switch]$DryRun
+  [switch]$DryRun,
+  [switch]$CleanupOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,45 +70,50 @@ Run "az resource list -g $ResourceGroup -o table" {
   & az resource list -g $ResourceGroup --query "[].{name:name, type:type}" -o table
 }
 
-Say "2. terraform init, take the Key Vault secrets out of state, and a destroy plan (lab)"
-Run "terraform init -reconfigure; terraform state rm azapi_resource.secret (only if present); terraform plan -destroy -out=destroy.tfplan" {
-  Push-Location $lab
-  try {
-    Invoke-Tool terraform @("init", "-reconfigure", "-input=false", "-backend-config=backend.hcl")
-    # The Key Vault secrets are azapi resources, written through Azure's management API. That API can
-    # create a secret but not delete one: DELETE answers 405 DeleteNotSupported (found on 25/11/2026,
-    # the first time this script ran), and the vault cannot be deleted until the secrets are. A
-    # secret goes away with its vault, so remove them from the state only. Nothing in Azure changes.
-    $secrets = @(& terraform state list 2>$null | Where-Object { $_ -like "azapi_resource.secret*" })
-    if ($secrets.Count -gt 0) {
-      Note "Removing $($secrets.Count) Key Vault secrets from the state. They are deleted with the vault."
-      Invoke-Tool terraform @("state", "rm", "azapi_resource.secret")
+if ($CleanupOnly) {
+  Say "2 to 4. Skipped (-CleanupOnly)"
+  Note "The terraform steps were not run. Only the leftovers are handled."
+} else {
+  Say "2. terraform init, take the Key Vault secrets out of state, and a destroy plan (lab)"
+  Run "terraform init -reconfigure; terraform state rm azapi_resource.secret (only if present); terraform plan -destroy -out=destroy.tfplan" {
+    Push-Location $lab
+    try {
+      Invoke-Tool terraform @("init", "-reconfigure", "-input=false", "-backend-config=backend.hcl")
+      # The Key Vault secrets are azapi resources, written through Azure's management API. That API can
+      # create a secret but not delete one: DELETE answers 405 DeleteNotSupported (found on 25/11/2026,
+      # the first time this script ran), and the vault cannot be deleted until the secrets are. A
+      # secret goes away with its vault, so remove them from the state only. Nothing in Azure changes.
+      $secrets = @(& terraform state list 2>$null | Where-Object { $_ -like "azapi_resource.secret*" })
+      if ($secrets.Count -gt 0) {
+        Note "Removing $($secrets.Count) Key Vault secrets from the state. They are deleted with the vault."
+        Invoke-Tool terraform @("state", "rm", "azapi_resource.secret")
+      }
+      Invoke-Tool terraform @("plan", "-destroy", "-input=false", "-no-color", "-out=destroy.tfplan")
+    } finally { Pop-Location }
+  }
+
+  Say "3. Confirm"
+  if ($DryRun) {
+    Note "[dry run] would ask you to type the resource group name: $ResourceGroup"
+  } elseif (-not $Force) {
+    Write-Host "   This DESTROYS the lab: the apps, MySQL (and its data), the registry, the Key Vault secrets and the IoT Hub." -ForegroundColor Yellow
+    Write-Host "   bootstrap and foundation are kept." -ForegroundColor Yellow
+    $typed = Read-Host "   Type the resource group name to continue"
+    if ($typed -ne $ResourceGroup) { throw "Stopped: that was not '$ResourceGroup'." }
+  }
+
+  Say "4. Destroy (lab)"
+  Run "terraform apply destroy.tfplan" {
+    Push-Location $lab
+    try {
+      Invoke-Tool terraform @("apply", "-input=false", "-no-color", "destroy.tfplan")
+    } catch {
+      Write-Warning "The destroy failed. If the message says ScopeLocked, set enable_locks = false in foundation, apply it, and run this again."
+      throw
+    } finally {
+      Remove-Item "destroy.tfplan" -Force -ErrorAction SilentlyContinue
+      Pop-Location
     }
-    Invoke-Tool terraform @("plan", "-destroy", "-input=false", "-no-color", "-out=destroy.tfplan")
-  } finally { Pop-Location }
-}
-
-Say "3. Confirm"
-if ($DryRun) {
-  Note "[dry run] would ask you to type the resource group name: $ResourceGroup"
-} elseif (-not $Force) {
-  Write-Host "   This DESTROYS the lab: the apps, MySQL (and its data), the registry, the Key Vault secrets and the IoT Hub." -ForegroundColor Yellow
-  Write-Host "   bootstrap and foundation are kept." -ForegroundColor Yellow
-  $typed = Read-Host "   Type the resource group name to continue"
-  if ($typed -ne $ResourceGroup) { throw "Stopped: that was not '$ResourceGroup'." }
-}
-
-Say "4. Destroy (lab)"
-Run "terraform apply destroy.tfplan" {
-  Push-Location $lab
-  try {
-    Invoke-Tool terraform @("apply", "-input=false", "-no-color", "destroy.tfplan")
-  } catch {
-    Write-Warning "The destroy failed. If the message says ScopeLocked, set enable_locks = false in foundation, apply it, and run this again."
-    throw
-  } finally {
-    Remove-Item "destroy.tfplan" -Force -ErrorAction SilentlyContinue
-    Pop-Location
   }
 }
 
@@ -107,25 +121,49 @@ Say "5. Clean up the session file and check nothing is left"
 Run "delete lab\zz-images.auto.tfvars" { Remove-Item $autoVars -Force -ErrorAction SilentlyContinue }
 if ($DryRun) {
   Note "[dry run] az resource list --tag project=buzzyhive -o table, and az group list for ME_* groups"
-  Note "[dry run] az resource list -g $ResourceGroup (anything left there was not created by Terraform)"
+  Note "[dry run] az resource list -g $ResourceGroup, then delete the allowlisted leftovers (the Azure ML registry, the Smart Detection action group, the Failure Anomalies rule) after a y/N question"
 } else {
-  # Azure ML creates its own, untagged Container Registry on the first job (24/11/2026). It is not in
-  # Terraform state, so destroy leaves it behind, and it keeps billing. The resource group is kept,
-  # so anything still inside it now is a leftover.
-  # The managed identity id-hive-lab-apps lives in this group but belongs to the foundation root, so
-  # it is expected to remain until foundation is destroyed. Everything else is a leftover.
-  $all = & az resource list -g $ResourceGroup --query "[].{name:name, type:type}" -o json | ConvertFrom-Json
-  $mine = @($all | Where-Object { $_.type -ne "Microsoft.ManagedIdentity/userAssignedIdentities" })
-  $owned = @($all | Where-Object { $_.type -eq "Microsoft.ManagedIdentity/userAssignedIdentities" })
+  # What Terraform never owned. The managed identity id-hive-lab-apps lives in this group but belongs
+  # to the foundation root, so it stays until foundation is destroyed. Everything else here after the
+  # destroy is a leftover, and only an allowlist of known ones is deleted: an unexpected resource is
+  # reported and left alone.
+  #  - the registry Azure ML creates on its first job (untagged, admin user on, not in the state)
+  #  - the Smart Detection action group and the Failure Anomalies rule Azure creates for Application Insights
+  $idType = "Microsoft.ManagedIdentity/userAssignedIdentities"
+  $all = @(& az resource list -g $ResourceGroup --query "[].{name:name, type:type, id:id}" -o json | ConvertFrom-Json)
+  $owned = @($all | Where-Object { $_.type -eq $idType })
   if ($owned.Count -gt 0) { Note "Expected to remain (owned by foundation): $(($owned | ForEach-Object { $_.name }) -join ', ')" }
-  if ($mine.Count -gt 0) {
-    Write-Warning "Still inside $ResourceGroup after the destroy. Terraform did not create these, so check each and delete it yourself:"
-    $mine | Format-Table -AutoSize | Out-String | Write-Host
-    Write-Host "   A leftover registry: az acr delete -n <name> -g $ResourceGroup --yes" -ForegroundColor Yellow
-    Write-Host "   Azure also creates some resources itself for Application Insights (a Smart Detection action group, a Failure Anomalies rule)." -ForegroundColor Yellow
-  } else {
-    Note "Nothing else is left in $ResourceGroup."
+
+  $known = @($all | Where-Object {
+      ($_.type -eq "Microsoft.ContainerRegistry/registries") -or
+      ($_.type -eq "microsoft.alertsmanagement/smartDetectorAlertRules" -and $_.name -like "Failure Anomalies*") -or
+      ($_.type -eq "microsoft.insights/actiongroups" -and $_.name -like "Application Insights Smart Detection*")
+    })
+  $unknown = @($all | Where-Object { $_.type -ne $idType -and (@($known | ForEach-Object { $_.id }) -notcontains $_.id) })
+
+  if ($known.Count -gt 0) {
+    Write-Host "   Leftovers Terraform never owned, safe to delete:"
+    $known | ForEach-Object { Write-Host ("     {0}  [{1}]" -f $_.name, $_.type) }
+    $go = $Force
+    if (-not $go) { $go = ((Read-Host "   Delete these $($known.Count) now? (y/N)") -match "^[yY]") }
+    if ($go) {
+      # The rule uses the action group, so it goes first; the registry is independent.
+      $rank = @{ "microsoft.alertsmanagement/smartdetectoralertrules" = 1; "microsoft.insights/actiongroups" = 2 }
+      foreach ($r in ($known | Sort-Object { if ($rank.ContainsKey($_.type.ToLower())) { $rank[$_.type.ToLower()] } else { 3 } })) {
+        Note "deleting $($r.name)"
+        & az resource delete --ids $r.id --only-show-errors
+        if ($LASTEXITCODE -ne 0) { Write-Warning "Could not delete $($r.name). Delete it by hand: az resource delete --ids <id>" }
+      }
+    } else {
+      Note "Left in place. Delete them by hand: az resource delete --ids <id>"
+    }
   }
+  if ($unknown.Count -gt 0) {
+    Write-Warning "Not on the allowlist, so left alone. Check each one and delete it yourself if it is yours:"
+    $unknown | ForEach-Object { Write-Host ("     {0}  [{1}]" -f $_.name, $_.type) }
+  }
+  $left = @(& az resource list -g $ResourceGroup --query "[].name" -o tsv)
+  Note "Now in ${ResourceGroup}: $(($left) -join ', ')"
   Write-Host "   Resources still tagged project=buzzyhive (the foundation identity is expected):"
   & az resource list --tag project=buzzyhive --query "[].{name:name, group:resourceGroup, type:type}" -o table
   # Filter in PowerShell, not in the az query: the quoting of a JMESPath filter breaks in some shells.
