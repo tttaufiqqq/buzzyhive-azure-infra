@@ -46,7 +46,7 @@ Run these in Windows PowerShell, in this order. Each step touches your subscript
 .\scripts\down.ps1             # asks you to type the resource group name
 ```
 
-The script lists what is in `rg-hive-lab`, plans a destroy of the `lab` root, applies it after you type the group name, and lists anything still inside the group. It never touches `bootstrap` or `foundation`. If it fails with `ScopeLocked`, set `enable_locks = false` in `foundation`, apply `foundation`, and run it again (troubleshooting 3).
+The script lists what is in `rg-hive-lab`, takes the Key Vault secrets out of the state (Azure cannot delete them, see [troubleshooting 43](troubleshooting.md)), plans a destroy of the `lab` root, applies it after you type the group name, and lists anything still inside the group. On 25/11/2026 the first run stopped on those secrets, and the rerun finished. It never touches `bootstrap` or `foundation`. If it fails with `ScopeLocked`, set `enable_locks = false` in `foundation`, apply `foundation`, and run it again (troubleshooting 3).
 
 The `lab` provider is configured to purge soft-deleted Key Vaults and Azure ML workspaces on destroy, so their names are not left reserved.
 
@@ -61,7 +61,7 @@ After the destroy, this should hold the managed identity `id-hive-lab-apps` and 
 Anything else is something Terraform never owned. Before the destroy, the group held 38 resources, and the likely leftovers are:
 
 - **The registry Azure ML created** (untagged, admin user on). Certain.
-- **A second action group and a `smartDetectorAlertRules` entry** that Azure creates itself for Application Insights. This is inferred from the resource types in the listing (two action groups, one smart detector rule), so read the names before deleting anything.
+- **A second action group and a `smartDetectorAlertRules` entry** that Azure creates itself for Application Insights. Confirmed on 25/11/2026: they were `Application Insights Smart Detection` and `Failure Anomalies - appi-hive-lab`. Read the names before deleting anything.
 
 Check what each one is, then delete it:
 

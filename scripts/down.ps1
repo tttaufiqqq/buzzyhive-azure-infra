@@ -61,11 +61,20 @@ Run "az resource list -g $ResourceGroup -o table" {
   & az resource list -g $ResourceGroup --query "[].{name:name, type:type}" -o table
 }
 
-Say "2. terraform init and a destroy plan (lab)"
-Run "terraform init -reconfigure, then terraform plan -destroy -out=destroy.tfplan" {
+Say "2. terraform init, take the Key Vault secrets out of state, and a destroy plan (lab)"
+Run "terraform init -reconfigure; terraform state rm azapi_resource.secret (only if present); terraform plan -destroy -out=destroy.tfplan" {
   Push-Location $lab
   try {
     Invoke-Tool terraform @("init", "-reconfigure", "-input=false", "-backend-config=backend.hcl")
+    # The Key Vault secrets are azapi resources, written through Azure's management API. That API can
+    # create a secret but not delete one: DELETE answers 405 DeleteNotSupported (found on 25/11/2026,
+    # the first time this script ran), and the vault cannot be deleted until the secrets are. A
+    # secret goes away with its vault, so remove them from the state only. Nothing in Azure changes.
+    $secrets = @(& terraform state list 2>$null | Where-Object { $_ -like "azapi_resource.secret*" })
+    if ($secrets.Count -gt 0) {
+      Note "Removing $($secrets.Count) Key Vault secrets from the state. They are deleted with the vault."
+      Invoke-Tool terraform @("state", "rm", "azapi_resource.secret")
+    }
     Invoke-Tool terraform @("plan", "-destroy", "-input=false", "-no-color", "-out=destroy.tfplan")
   } finally { Pop-Location }
 }

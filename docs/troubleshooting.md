@@ -597,3 +597,22 @@ The same event created a second problem. The new registry is a Basic registry wi
 
 <img src="evidence/154-drift-bootstrap-no-changes.png" alt="terraform plan detailed-exitcode in bootstrap: No changes, exit 0" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 42.1. The drift check in `bootstrap`: `No changes`, exit code 0. `foundation` returned the same, and `lab` did after the fix.*
+
+## 43. The first teardown stops on the Key Vault secrets: `DeleteNotSupported`
+
+**Symptom:** `scripts/down.ps1`, the first time it ran against Azure on 25/11/2026, destroyed most of the lab and then failed with six identical errors, one per secret: `Failed to delete resource ... Microsoft.KeyVault/vaults/kv-hive-ci1yu/secrets/<name>`, `RESPONSE 405: 405 Method Not Allowed`, `ERROR CODE: DeleteNotSupported`, `The resource type does not support delete operation.` The script reported `The destroy failed`, and Terraform released the state lock.
+
+**What had already worked:** the network, the apps and nearly everything else were destroyed before the error, so a rerun only had a handful of resources left.
+
+**Cause:** the secrets are `azapi_resource.secret` (one per name), because the vault has public access off and Terraform cannot reach its data plane from outside the VNet, so they are written through the Azure management API. That API creates and updates a secret but does not delete one. The vault cannot be deleted until Terraform has deleted its children, so the destroy stopped there. The create path had worked on 24/11/2026, and the destroy path had never run.
+
+**Fix:** a secret goes away with its vault, so `down.ps1` now removes `azapi_resource.secret` from the state (`terraform state rm azapi_resource.secret`, only if it is present) just before it plans the destroy. Nothing in Azure changes. The provider is configured to purge soft-deleted vaults on destroy, so the vault's name is not left reserved.
+
+**Result:** the rerun destroyed the remaining 3 resources (the vault in 16 seconds, plus two random values). The script then listed what Terraform never owned, exactly as the runbook predicted: the registry that Azure ML created, the `Application Insights Smart Detection` action group and the `Failure Anomalies - appi-hive-lab` rule that Azure creates for Application Insights, plus the managed identity that `foundation` owns and removes later. No `ME_` group was left.
+
+**Not verified here:** that the vault was purged (`az keyvault list-deleted`), which is a separate check in the runbook.
+
+**Lessons:**
+
+- A resource type that can be created through an API is not necessarily one that can be deleted through it. Test the destroy path as early as the apply path.
+- Removing something from the state is the right tool when its parent deletes it anyway. It is only bookkeeping, so say so out loud before doing it.
