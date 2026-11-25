@@ -70,17 +70,45 @@ Check "other projects are not matched"       ((Select-ByPrefix @("log-pldns-dev-
 
 "New-PhpRunnerArgs / Get-RenameNodePhp (the device-name step)"
 $phpArgs = New-PhpRunnerArgs (Get-RenameNodePhp "NODE-28ZRUR")
-Check "four arguments"                        $phpArgs.Count 4
-Check "php -r and the eval line"              ($phpArgs[0] + " " + $phpArgs[1] + " " + $phpArgs[2]) 'php -r eval(base64_decode($argv[1]));'
-Check "no quote or space in args 1 to 3"      (($phpArgs[0..2] -join '') -match '["''\s]') $false
-Check "the payload is plain base64"           ($phpArgs[3] -match '^[A-Za-z0-9+/=]+$') $true
-$decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($phpArgs[3]))
+Check "three arguments"                       $phpArgs.Count 3
+Check "php, then -r and the code as ONE argument" ($phpArgs[0] + "|" + $phpArgs[1]) 'php|-r eval(base64_decode($argv[1]));'
+Check "that argument holds a space (so the CLI parser takes it as a value)" ($phpArgs[1] -match ' ') $true
+Check "no argument is a bare option like -r"   (@($phpArgs | Where-Object { $_ -match '^-\S*$' }).Count) 0
+Check "the payload is plain base64"           ($phpArgs[2] -match '^[A-Za-z0-9+/=]+$') $true
+$decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($phpArgs[2]))
 Check "decoded code names the device"         ($decoded.Contains('$id = "NODE-28ZRUR"')) $true
 Check "decoded code boots Laravel"            ($decoded.Contains("bootstrap/app.php")) $true
 foreach ($bad in @('NODE"; drop', 'a b', 'x', "NODE-1'")) {
   $threw = $false; try { Get-RenameNodePhp $bad | Out-Null } catch { $threw = $true }
   Check ("refused device name [" + $bad + "]") $threw $true
 }
+
+"Get-AzInvocation / Invoke-AzDirect (arguments that az.cmd cannot carry)"
+$inv = Get-AzInvocation
+Check "an az executable was found"            (Test-Path $inv.Exe) $true
+if ($inv.Exe -like "*python.exe") {
+  Check "the batch file is bypassed"          ($inv.Exe -like "*.cmd") $false
+  Check "the module is started like az.cmd does" ($inv.Prefix -join " ") "-IBm azure.cli"
+} else { Write-Host "  (az is not the Windows batch install here, so the direct-python path is not exercised)" }
+# The real round trip, through the Azure CLI's own Python: the arguments must arrive unchanged, and the CLI's
+# argument parser (argparse, the one that rejected a separate -r) must keep all of them as values of --args.
+$probe = Join-Path ([IO.Path]::GetTempPath()) ("argprobe-" + [guid]::NewGuid().ToString("N") + ".py")
+Set-Content -Path $probe -Encoding ASCII -Value @(
+  "import argparse, sys",
+  "p = argparse.ArgumentParser()",
+  "p.add_argument('-n'); p.add_argument('-o'); p.add_argument('--container-name')",
+  "p.add_argument('--args', nargs='+')",
+  "a, unknown = p.parse_known_args(sys.argv[1:])",
+  "print(len(a.args)); print(len(unknown))",
+  "[print(x) for x in a.args]")
+$py = if ($inv.Exe -like "*python.exe") { $inv.Exe } else { "python" }
+$sent = New-PhpRunnerArgs (Get-RenameNodePhp "NODE-28ZRUR")
+$got = @(& $py $probe -n job --container-name migrate --args @sent -o none)
+Check "the parser keeps all three as --args"  $got[0] "3"
+Check "the parser leaves nothing unrecognized" $got[1] "0"
+Check "the code argument arrives unchanged"   $got[3] $sent[1]
+Check "the payload arrives unchanged"         $got[4] $sent[2]
+Remove-Item $probe -Force
 
 ""
 if ($failed -eq 0) { Write-Host "All tests passed." -ForegroundColor Green; exit 0 }

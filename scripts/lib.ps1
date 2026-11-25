@@ -77,13 +77,16 @@ function Get-LocalSettings([string]$ScriptsDir) {
 
 
 # Arguments for a container that runs a piece of PHP with Laravel booted, and nothing else. The code is sent as
-# base64, so no quote or bracket of it ever passes through PowerShell 5.1 and az.cmd, which mangle them
-# (troubleshooting 48). The one short argument has no space and no quote:  eval(base64_decode($argv[1]));
+# base64, so no quote of it ever passes through PowerShell 5.1 (troubleshooting 48). Two more traps, both
+# found on the first real run (troubleshooting 49): az.cmd chokes on a ) in an argument, so this is started
+# without it (Invoke-AzDirect), and the Azure CLI's parser reads a separate "-r" as one of its own options
+# and refuses it. An argument that starts with a dash is a plain value only if it holds a space, so "-r" and
+# the code are ONE argument: PHP takes  -r<code>  with the code attached, and the leading space is harmless.
 function New-PhpRunnerArgs([string]$Php) {
   $boot = 'require getcwd() . "/vendor/autoload.php"; $app = require getcwd() . "/bootstrap/app.php"; ' +
           '$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); '
   $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($boot + $Php))
-  return @("php", "-r", 'eval(base64_decode($argv[1]));', $b64)
+  return @("php", '-r eval(base64_decode($argv[1]));', $b64)
 }
 
 # PHP that gives the first seeded IoT node the identifier the IoT Hub device has, unless some node has it already.
@@ -92,4 +95,25 @@ function Get-RenameNodePhp([string]$Identifier) {
   return '$id = "' + $Identifier + '"; $t = Illuminate\Support\Facades\DB::table("iot_nodes"); ' +
          'if ((clone $t)->where("node_identifier", $id)->exists()) { echo "NODE_ALREADY_PRESENT"; } else { ' +
          '$n = (clone $t)->where("id", (clone $t)->min("id"))->update(["node_identifier" => $id]); echo "NODE_RENAMED_ROWS=" . $n; }'
+}
+
+
+# How to start the Azure CLI WITHOUT az.cmd. On Windows, az is a batch file that puts every argument inside a
+# parenthesised block, so an argument containing ) ends the block early and cmd.exe answers
+# ") was unexpected at this time" (troubleshooting 49). The batch file only starts python.exe -IBm azure.cli, so
+# this does the same directly, and the arguments reach the CLI as they are. Falls back to plain az.
+function Get-AzInvocation {
+  $cmd = (Get-Command az -ErrorAction Stop).Source
+  if ($cmd -like "*.cmd") {
+    $py = Join-Path (Split-Path (Split-Path $cmd -Parent) -Parent) "python.exe"
+    if (Test-Path $py) { return New-Object psobject -Property @{ Exe = $py; Prefix = @("-IBm", "azure.cli") } }
+  }
+  return New-Object psobject -Property @{ Exe = $cmd; Prefix = @() }
+}
+
+# Run az with arguments that may contain brackets, semicolons or dollar signs. Stops if az fails.
+function Invoke-AzDirect([string[]]$AzArgs) {
+  $inv = Get-AzInvocation
+  & $inv.Exe @($inv.Prefix + $AzArgs)
+  if ($LASTEXITCODE -ne 0) { throw "az $($AzArgs -join ' ') failed with exit code $LASTEXITCODE" }
 }

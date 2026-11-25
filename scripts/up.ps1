@@ -159,7 +159,8 @@ function Start-JobAndWait([string]$JobName, [int]$TimeoutSeconds) {
 # (NODE-XXXXXX), so a device named in advance never matches them (troubleshooting 48). Runs as the migrate Job.
 function Set-FirstNodeIdentifier([string]$Identifier) {
   $phpArgs = New-PhpRunnerArgs (Get-RenameNodePhp $Identifier)
-  Invoke-Tool az (@("containerapp", "job", "update", "-n", "laravel-migrate", "-g", $ResourceGroup, "--container-name", "migrate", "--args") + $phpArgs + @("-o", "none"))
+  # Not through az.cmd: it breaks on the ) in the PHP argument (troubleshooting 49).
+  Invoke-AzDirect (@("containerapp", "job", "update", "-n", "laravel-migrate", "-g", $ResourceGroup, "--container-name", "migrate", "--args") + $phpArgs + @("-o", "none"))
   $status = Start-JobAndWait "laravel-migrate" 600
   if ($status -ne "Succeeded") { Write-Warning "Renaming the node ended as $status. Check it in the database before sending readings." }
   else { Note "The first seeded node now has the identifier $Identifier." }
