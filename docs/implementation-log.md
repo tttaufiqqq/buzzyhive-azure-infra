@@ -143,7 +143,9 @@ The Function that forwards IoT Hub messages to Laravel was written, then hosted 
 - `up-all.ps1` ran from empty: `bootstrap`, `foundation`, the soft-deleted workspace handled by the script, `lab`, the Function code, and a plan in each root. Result: No changes in all three.
 - Two problems on the way: a 412 on a Container App (46) and an unauthorized `docker login` (47). Fixes: the apps are created one after another, the apply is retried once, and the registry credential is proven before the login.
 - Third problem, found while preparing the device test: the seeder makes random node names, so a device registered in advance never matches (48). `up.ps1` now gives the first seeded node the device's name, which was tested offline against the real Laravel app, not yet against Azure.
-- Not done: a reading sent after the rebuild, the final teardown through `down-all.ps1`, and the measured cost.
+- A reading sent after the rebuild was verified: 10 readings reached the database through the Function, each with a prediction from the retrained model.
+- The final teardown ran through `down-all.ps1` in 32.4 minutes, and a read-only check afterwards found nothing of the project in the subscription and no soft-deleted workspace of ours, which confirms the fix for entry 45.
+- Not done: the measured cost, because Cost analysis lags.
 
 ## 4. Problems found before deployment
 

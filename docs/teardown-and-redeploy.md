@@ -3,7 +3,7 @@
 This article is the runbook for removing everything this project created in Azure, proving nothing is left, and then building it again from an empty subscription.
 
 > [!NOTE]
-> **The teardown (sections 1 to 4) and the redeploy from empty (sections 5 to 7) each ran once, on 25/11/2026, and sections 9 and 10 record what happened.** Both now have a one-command form: `scripts/down-all.ps1` and `scripts/up-all.ps1`. `up-all.ps1` ran for real. `down-all.ps1` has not: only the three destroys it wraps were run, by hand, and its first real run is the final teardown. Commands marked as run were run, and the rest must be read before they are run. Record what actually happens in [troubleshooting](troubleshooting.md).
+> **The teardown (sections 1 to 4) and the redeploy from empty (sections 5 to 7) each ran once, on 25/11/2026, and sections 9 and 10 record what happened.** Both now have a one-command form: `scripts/down-all.ps1` and `scripts/up-all.ps1`. `up-all.ps1` ran for real. `down-all.ps1` ran once for real at the end of the day (section 11). Commands marked as run were run, and the rest must be read before they are run. Record what actually happens in [troubleshooting](troubleshooting.md).
 
 ## 1. Who owns what
 
@@ -173,7 +173,7 @@ Idempotence is the first row. Create-then-destroy twice with the same results is
 - **Quota.** 4 vCPUs in the subscription. The Azure ML cluster uses 2 per node, and one node fits next to the lab.
 - **The application repository branch** must be reachable, because the Dockerfiles are not on `main`.
 - **MySQL 8.0** loses standard support on 31/12/2026, so a lab that lives past that date should use a newer version.
-- **The scripts are lightly tested.** `up-all.ps1` and `up.ps1` ran once for real and needed two fixes (troubleshooting 46 and 47). `down.ps1` ran for real and needed three. `down-all.ps1` has never run, so expect to fix a flag or two.
+- **The scripts are lightly tested.** `up-all.ps1` and `up.ps1` ran once for real and needed two fixes (troubleshooting 46 and 47). `down.ps1` ran for real and needed three. `down-all.ps1` ran once for real and finished (section 11), but one run is not much evidence.
 - **A different subscription** needs a new `subscription_id`, the preflight, `bootstrap` again, and a check of which names, quotas and regions change.
 
 ## 8. Suggested timeline for this subscription
@@ -281,4 +281,32 @@ A simulated device sent 10 readings through IoT Hub with `scripts/simulate_devic
 
 **Result:** all 10 readings reached the database, each with a prediction, 3082 being the newest id. **One observation:** every prediction carries `out_of_distribution: 1` with the warning "Input is outside the training feature bounds for: mq2_value". The retrained model saw `mq2_value` only between 44 and 245, and the `baseline` profile sends values up to 265. The app flagged it and still gave a sensible label, so it is a note about the simulator profile, not a failure.
 
-**Not done yet:** a Telegram alert after the rebuild (the seed leaves no `telegram_id`, and `baseline` does not trigger one), the final teardown with `down-all.ps1`, and the measured cost.
+**Not done yet:** a Telegram alert after the rebuild (the seed leaves no `telegram_id`, and `baseline` does not trigger one), and the measured cost. The final teardown is in section 11.
+
+## 11. The second teardown, 25/11/2026
+
+The same evening, `scripts/down-all.ps1` removed everything with one command and one confirmation (typing `DESTROY ALL`). The dry run matched the steps in section 3, and the real run took **32.4 minutes**. The last destroy, `bootstrap`, destroyed 5 resources, the resource group in 21 seconds. The terminal output reported no failed step, and I did not see the output of the earlier steps, only the end of it.
+
+I then checked the result independently, with read-only commands:
+
+| Check | Result |
+|---|---|
+| `az group list` | `NetworkWatcherRG` only |
+| `az resource list` (whole subscription) | `NetworkWatcher_malaysiawest` only, which Azure creates itself |
+| Resources tagged `project=buzzyhive` | 0 |
+| Policy assignments of the project | 0 |
+| Entra groups `grp-hive-*` and the pipeline app registration | 0 and 0 |
+| Soft-deleted Key Vaults and Log Analytics workspaces of the project | None. The other workspaces and `kv-lab-03` in those lists belong to other projects and were left alone |
+| Budgets | `budget-lab-monthly` remains. It is older than this project and not part of it |
+
+*Table 11.1. The subscription after the second teardown.*
+
+The soft-deleted workspace that the first teardown left behind ([troubleshooting 45](troubleshooting.md)) did not come back, so the provider setting added after the first teardown works.
+
+<img src="evidence/181-down-all-bootstrap-destroyed-and-final-inventory.png" alt="down-all.ps1 finishing: bootstrap destroyed (5), the final inventory showing only NetworkWatcherRG, nothing tagged, no soft-deleted workspace, and 32.4 minutes" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 11.1. The end of `down-all.ps1`: `bootstrap` destroyed (5 resources), then the final inventory (only `NetworkWatcherRG`, nothing tagged `project=buzzyhive`, no soft-deleted Key Vault or workspace of ours) and the total, 32.4 minutes. The subscription in the ids is covered.*
+
+<img src="evidence/180-portal-only-network-watcher-after-second-teardown.png" alt="Azure portal Resource Manager list of all resources in the subscription: only NetworkWatcher_malaysiawest" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 11.2. The portal's list of every resource in the subscription afterwards: only `NetworkWatcher_malaysiawest`, which Azure creates itself. The account name is covered.*
+
+**What this does not show:** the cost. Cost analysis lags 8 to 24 hours, so the total for 24/11/2026 to 26/11/2026 comes the next day.

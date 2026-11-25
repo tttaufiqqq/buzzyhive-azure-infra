@@ -659,11 +659,11 @@ The same event created a second problem. The new registry is a Basic registry wi
 
 **Cause:** Azure keeps a deleted Log Analytics workspace for a few days so that it can be recovered, and during that time its name stays reserved. The provider does not purge it unless it is told to. Every other name in this project either has a random suffix (the Key Vaults, which the provider already purges) or lives in a resource group that no longer exists. The workspace name, `log-hive-lab`, has no suffix.
 
-**Effect:** a redeploy within that window may fail when it tries to create a workspace with the same name. That has not been tried.
+**Effect:** a redeploy within that window may fail when it tries to create a workspace with the same name. That was not hit on 25/11/2026, because `up-all.ps1` recovered and purged the workspace first (see the workaround below).
 
 **Fix for the next teardown:** `lab/main.tf` now sets `log_analytics_workspace { permanently_delete_on_destroy = true }` in the provider features, next to the existing Key Vault and ML settings.
 
-**Workaround for this time, not run:** the resource group that held the workspace was destroyed with `foundation`, which blocks recovery. After `foundation` is applied again (it recreates `rg-hive-lab`), recover the workspace and delete it for good before applying `lab`:
+**Workaround, run by `up-all.ps1` on 25/11/2026, and it worked:** the resource group that held the workspace was destroyed with `foundation`, which blocks recovery. After `foundation` is applied again (it recreates `rg-hive-lab`), recover the workspace and delete it for good before applying `lab`:
 
 ```powershell
 az monitor log-analytics workspace recover -g rg-hive-lab -n log-hive-lab
@@ -672,7 +672,7 @@ az monitor log-analytics workspace delete -g rg-hive-lab -n log-hive-lab --force
 
 If the name is not actually blocked, the apply simply works and these commands are not needed. The other option is to wait out the retention period.
 
-**Status:** the soft-deleted workspace is verified. Whether it blocks a redeploy is not known.
+**Status:** the workaround worked: the redeploy's `lab` apply had no name clash. The provider setting also worked: after the second teardown (`down-all.ps1`, 25/11/2026), `az monitor log-analytics workspace list-deleted-workspaces` listed no `log-hive-lab`. Whether the original name was in fact blocked was never tested, because the script cleared it first.
 
 **Lesson:** after a teardown, list what is soft-deleted (`az keyvault list-deleted` and the workspace list), because a name that looks free in the resource list can still be reserved.
 

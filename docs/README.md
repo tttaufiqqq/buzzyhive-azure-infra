@@ -10,7 +10,7 @@ Read these in order.
 6. [Cost and teardown](cost-and-teardown.md): estimated cost, the credit balance and expiry, how to check your own cost, and how to leave nothing running. Read this before you leave anything running.
 7. [Train the model in Azure ML](azure-ml.md): the retraining run of 24/11/2026, the job that failed first, the retrained model compared with the one in service, and its deployment.
 8. [Load test with k6](load-test.md): the ingest test run against the lab, four runs compared, what the logs showed (a probe restart and a MySQL deadlock), what was changed, and what is still unknown.
-9. [Teardown and redeploy](teardown-and-redeploy.md): the runbook for removing everything, proving nothing is left, and building it again from empty. Both were run once on 25/11/2026, by hand and then through `scripts/up-all.ps1`.
+9. [Teardown and redeploy](teardown-and-redeploy.md): the runbook for removing everything, proving nothing is left, and building it again from empty. Both were run on 25/11/2026: the teardown by hand and again through `scripts/down-all.ps1`, and the redeploy through `scripts/up-all.ps1`.
 
 The two diagrams and their editable source are in [`architecture/`](architecture/). Screenshots are in [`evidence/`](evidence/): `01` to `91` from the first deployment, and `92` to `135` from the load test, the Telegram check and the Azure ML session. They are used in the deploy, troubleshooting, Docker, architecture, cost, implementation log, load test and Azure ML articles.
 
