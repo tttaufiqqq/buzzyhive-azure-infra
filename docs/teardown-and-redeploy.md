@@ -253,4 +253,32 @@ The redeploy ran the same day as the teardown, with `scripts/up-all.ps1 -Seed`, 
 
 *Table 10.1. The redeploy, step by step.*
 
-**Not done yet:** a simulated reading sent through IoT Hub after the rebuild, with the Function forwarding it and a prediction and a Telegram alert following. The final teardown with `down-all.ps1`, and the measured cost, also remain.
+<img src="evidence/174-redeploy-up-all-image-push-done-device-registered.png" alt="up.ps1 finishing: device registered, site URL, images, and the Function upload starting" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 10.2. `up.ps1` finishing in 12.6 minutes: the device registered without printing its keys, and the images tagged with the application's short commit. The Function upload starts next. The lab URL is covered.*
+
+<img src="evidence/175-redeploy-function-code-and-proof-no-changes.png" alt="deploy-function.ps1 registering forward_reading, then the proof step showing No changes in bootstrap, foundation and lab" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 10.3. The Function code is uploaded and `forward_reading` is registered. Then the proof step: `No changes` in `bootstrap`, `foundation` and `lab`. The whole run took 21 minutes.*
+
+<img src="evidence/172-portal-nsg-mysql-allows-only-the-apps-subnet.png" alt="Azure portal: network security group nsg-snet-mysql with one custom inbound rule allowing port 3306 from the apps subnet" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 10.4. The MySQL subnet's network security group as deployed: one custom inbound rule, `allow-aca-to-mysql`, port 3306 from the Container Apps subnet, above Azure's default rules. The subscription and account are covered.*
+
+<img src="evidence/173-portal-nsg-aca-allows-web-80-443.png" alt="Azure portal: network security group nsg-snet-aca with one custom inbound rule allowing ports 80 and 443 from the internet" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 10.5. The Container Apps subnet's group: one custom inbound rule, `allow-web-in`, ports 80 and 443 from the internet. The subscription and account are covered.*
+
+
+### 10.1 A reading sent after the rebuild
+
+A simulated device sent 10 readings through IoT Hub with `scripts/simulate_device.py --hive-id 1 --count 10 --interval 5 --profile baseline`. The device was `NODE-H0J56X`, the node the seeder had made for hive 1, because the seeder's identifiers are random ([troubleshooting 48](troubleshooting.md)).
+
+<img src="evidence/177-simulator-10-readings-sent-0-failed.png" alt="PowerShell: the device is registered and simulate_device.py sends 10 readings, 0 failed" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 10.6. The device is registered under the seeded name, and the simulator sends 10 readings: `done: 10 sent, 0 failed`. The device key was read into the environment and never printed.*
+
+<img src="evidence/178-tinker-sensor-logs-rows-arrived.png" alt="tinker: the newest sensor_logs rows for hive 1 with the simulator's values" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 10.7. Inside the app container (`php artisan tinker`): the newest `sensor_logs` rows for hive 1 carry the simulator's values, for example 33.7 / 70.6 / 265. So the Function forwarded them, about 5 seconds apart.*
+
+<img src="evidence/179-tinker-predictions-approaching-retrained-model.png" alt="tinker: the newest predictions row, approaching, from the knn_k7_distance model" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 10.8. The matching `predictions` row: `approaching`, from `knn_k7_distance-synthetic_readiness_training_flat_v1-sklearn-1.8.0`, the model retrained in Azure ML, not the stale one.*
+
+**Result:** all 10 readings reached the database, each with a prediction, 3082 being the newest id. **One observation:** every prediction carries `out_of_distribution: 1` with the warning "Input is outside the training feature bounds for: mq2_value". The retrained model saw `mq2_value` only between 44 and 245, and the `baseline` profile sends values up to 265. The app flagged it and still gave a sensible label, so it is a note about the simulator profile, not a failure.
+
+**Not done yet:** a Telegram alert after the rebuild (the seed leaves no `telegram_id`, and `baseline` does not trigger one), the final teardown with `down-all.ps1`, and the measured cost.

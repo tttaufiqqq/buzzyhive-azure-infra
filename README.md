@@ -29,7 +29,8 @@ This is a learning project. It designs how to run [BuzzyHive 2.0](https://github
 | Azure ML | A job trained the readiness model on Azure, it was registered, compared with the stale model in service, and deployed. See [Azure ML](docs/azure-ml.md) |
 | Teardown | Done on 25/11/2026: `lab`, `foundation` and `bootstrap` destroyed, and nothing of the project left in the subscription. It found three problems in the destroy path ([runbook](docs/teardown-and-redeploy.md), section 9) |
 | Re-creation from empty | Done on 25/11/2026 with `scripts/up-all.ps1`: `bootstrap`, `foundation` and `lab` applied, the site and Function came up, and `terraform plan` showed No changes in all three roots. It hit two problems ([troubleshooting 46 and 47](docs/troubleshooting.md)) |
-| Measured cost, and a reading sent after the rebuild | **Not done yet.** Cost data lags, so the total comes the next day |
+| A reading after the rebuild | Verified on 25/11/2026: 10 readings from a simulated device reached the database through IoT Hub and the Function, each with a prediction from the retrained model ([runbook](docs/teardown-and-redeploy.md), section 10) |
+| Measured cost | **Not done yet.** Cost data lags, so the total comes the next day |
 | IoT Hub forwarder Function | Deployed on Flex Consumption in East US. Three readings from a simulated device reached Laravel through IoT Hub and the Function on 25/11/2026. Classic App Service plans failed on a quota of 0 ([troubleshooting 40](docs/troubleshooting.md)) |
 | CI plan and apply | Not written yet |
 

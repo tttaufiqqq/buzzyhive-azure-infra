@@ -685,6 +685,9 @@ Error: retrieving secrets for Container App (... Container App Name: "flask-ml")
   with azurerm_container_app.flask
 ```
 
+<img src="evidence/169-redeploy-412-flask-ml-error.png" alt="terraform apply output ending with a 412 Precondition Failed error for flask-ml and the up.ps1 failure" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 46.1. The 412 on `flask-ml`, at 10:30 on 25/11/2026. The web app, the worker, the database, the Function and the alert were created before it. The subscription and resource paths are covered.*
+
 **State afterwards:** `az containerapp list` showed all three apps `Succeeded` and `Running`, including `flask-ml`. Terraform had marked `azurerm_container_app.flask` as **tainted**, which means it plans to replace it.
 
 **Cause, not proven:** the three Container Apps are created at the same time in one environment, and the provider reads the secrets of `flask-ml` while Azure is still changing it. A 412 means the version the provider holds is out of date. This is a known kind of race in the provider. It did not happen on 24/11/2026.
@@ -707,12 +710,37 @@ Error response from daemon: Get "https://<registry>/v2/": unauthorized: {"errors
 
 The script had already switched the admin user off again (`adminUserEnabled` was `false`), as designed.
 
+<img src="evidence/171-redeploy-docker-login-unauthorized.png" alt="up.ps1 step 3 failing: docker login returns unauthorized" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 47.1. The failure: `docker login` is unauthorized straight after the registry was created. The lab URL and the correlation id are covered.*
+
 **What is known:** on 24/11/2026 the same login worked once the password went through an environment variable ([troubleshooting 26](troubleshooting.md)), which is what the script already did. The difference was time. On 24/11/2026 the admin user was enabled by hand and used later, while the script uses the password within a second or two.
 
 **Cause, not proven:** Azure may need a short while before it accepts a new admin credential.
 
 **Fix, added:** before `docker login`, the script calls `https://<registry>/v2/` from Windows with the credential (in a header, not on a command line) and waits until the answer is 200, up to 3 minutes. Then it tries `docker login` up to three times. If Windows is accepted and WSL is not, it says that this is the PowerShell-to-WSL problem from entry 26.
 
-**Status:** the rerun with this change finished. I did not record whether the wait loop printed anything, so I do not know whether the timing guess was right or the failure simply did not repeat.
+**Status:** the rerun with this change logged in on the first try. The screenshot below shows `Login Succeeded` straight after the `Registry:` line, with no "registry does not accept the admin credential yet" message between them, so the wait loop did not have to wait. By then the registry was several minutes old, whereas the first failure came seconds after it was created. That fits a delay on a brand-new registry, but it is not proven: the failure was not reproduced on a second new registry.
+
+<img src="evidence/170-redeploy-docker-login-succeeded-after-fix.png" alt="the rerun: terraform reports no changes, then docker login succeeds and the build starts" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 47.2. The rerun: the `lab` plan reports no changes, and `docker login` returns `Login Succeeded` with nothing waited for. The lab URL and the resource path are covered.*
 
 **Lesson:** a credential created a moment ago is not proof that the service has seen it. Check it from the outside before blaming the tool that uses it.
+
+## 48. The device registered in IoT Hub never matches the seeded database
+
+**Symptom:** after the redeploy, the IoT Hub device `NODE-28ZRUR` existed, but the database had no node with that identifier. `iot_nodes` held `NODE-H0J56X`, `NODE-9AJ52E` and three more. A reading from `NODE-28ZRUR` would have been rejected, because the payload's `device_id` has to equal the `node_identifier` of an active device ([simulate_device.py](../scripts/simulate_device.py)).
+
+<img src="evidence/176-device-connection-string-set-without-printing.png" alt="PowerShell reading the IoT Hub name from Terraform and setting the device connection string for NODE-28ZRUR without printing it" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 48.1. The first attempt used `NODE-28ZRUR`, the name from the earlier deployment, with the connection string read into the environment and not printed. That device is not in the new database.*
+
+**Cause:** `ProductionDataSeeder` makes each identifier with `'NODE-' . strtoupper(Str::random(6))`, so a fresh seed gives new names every time. `up.ps1 -RegisterDevice` registered a name chosen in advance, which could never match.
+
+**What did not work:** reading the new identifier back from the database. MySQL is private, so the script has to go through the app container, and `az containerapp exec` is an interactive terminal session. Run from a script it connected and returned nothing, and the PHP I passed in it was broken by the quotes that Windows PowerShell 5.1 and `az.cmd` rewrite.
+
+**Fix:** the script no longer reads the name. It sets it. After the seed, a run of the migrate Job gives the first seeded node the device's name, unless a node already has it, and then the device is registered under that name. The PHP is sent as base64 in one argument (`php -r 'eval(base64_decode($argv[1]));' <base64>`), so no quote or bracket of it ever passes through PowerShell. This was tested here three ways: the four arguments arrive unchanged through a `.cmd` shim like `az.cmd`; the generated PHP parses; and run against the real Laravel app with a throwaway SQLite database it renamed one of three nodes and, run again, changed nothing.
+
+**Status:** not run against Azure yet. The next redeploy is its first real test. Until then, register the seeded name by hand (read `iot_nodes` in tinker and create the device under that name).
+
+**Side effect:** the first seeded node's identifier differs from what the seeder made. For a lab and a demonstration that is fine, and it is why the database shows one node with the same name as the device.
+
+**Lesson:** when a tool cannot be scripted to read a value, change the design so that the value is chosen instead of discovered.
