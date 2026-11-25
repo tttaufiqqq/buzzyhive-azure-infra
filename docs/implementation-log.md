@@ -137,6 +137,13 @@ The Function that forwards IoT Hub messages to Laravel was written, then hosted 
 - Afterwards: the Log Analytics workspace was found soft-deleted with its name reserved (45).
 - Not done: the redeploy from empty, and the measured cost.
 
+### 3.4 25/11/2026: the redeploy, and one command each way
+
+- Built `scripts/up-all.ps1` and `scripts/down-all.ps1` on top of `up.ps1` and `down.ps1`, so the whole environment goes up or down with one command. They share `scripts/lib.ps1`, which has 23 offline tests for the file handling (Windows PowerShell 5.1). The Pusher key is read from `lab/terraform.tfvars`, and the app repository path and device name from a git-ignored `scripts/local.settings.json`, so nothing is typed.
+- `up-all.ps1` ran from empty: `bootstrap`, `foundation`, the soft-deleted workspace handled by the script, `lab`, the Function code, and a plan in each root. Result: No changes in all three.
+- Two problems on the way: a 412 on a Container App (46) and an unauthorized `docker login` (47). Fixes: the apps are created one after another, the apply is retried once, and the registry credential is proven before the login.
+- Not done: a reading sent after the rebuild, the final teardown through `down-all.ps1`, and the measured cost.
+
 ## 4. Problems found before deployment
 
 Found before any resource existed in Azure, mostly by building and running the images. "Running" means reproduced. "Code read" means found by reading the app, then confirmed or fixed in a build. "Review" means reasoned from documented behaviour and not yet confirmed. Entries with a troubleshooting number have a symptom-to-fix write-up.

@@ -3,7 +3,7 @@
 This is a learning project. It designs how to run [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readiness-Prediction), a kelulut (stingless bee) harvest readiness platform, on Azure with Docker containers and Terraform, using services such as Azure IoT Hub, Container Apps and Azure Machine Learning.
 
 > [!NOTE]
-> This is a personal learning design. It is not official Microsoft guidance. On 24/11/2026 the three Terraform roots were applied once to a Free Trial subscription, the app images ran on Container Apps, and a simulated device produced predictions. The IoT Hub forwarder Function runs on Flex Consumption and forwarded a simulated device's readings to Laravel, the CI plan and apply jobs are not built, the lab was destroyed on 25/11/2026 and has not been re-created, and the cost of the run is not measured. Service prices are estimates, and each one is labelled that way.
+> This is a personal learning design. It is not official Microsoft guidance. On 24/11/2026 the three Terraform roots were applied once to a Free Trial subscription, the app images ran on Container Apps, and a simulated device produced predictions. The IoT Hub forwarder Function runs on Flex Consumption and forwarded a simulated device's readings to Laravel, the CI plan and apply jobs are not built, the lab was destroyed and re-created from empty on 25/11/2026 with the plan showing no changes afterwards, and the cost of the run is not measured. Service prices are estimates, and each one is labelled that way.
 
 <img src="docs/architecture/network-and-runtime.png" alt="Azure architecture page 1: ESP32 or simulator to IoT Hub to Function to Container Apps (laravel-web, flask-ml, worker, Jobs) with MySQL, private endpoints, Key Vault, a private and a public Storage account, ACR, Azure ML and monitoring" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Page 1, network and runtime: how a sensor reading travels from the ESP32 to the dashboard. Source: [`docs/architecture/architecture.drawio`](docs/architecture/architecture.drawio).*
@@ -28,7 +28,8 @@ This is a learning project. It designs how to run [BuzzyHive 2.0](https://github
 | Load test (k6) | Four runs. A probe restart and a MySQL deadlock were found and fixed. At 10 requests per second the single web replica reaches its CPU limit. See [the load test](docs/load-test.md) |
 | Azure ML | A job trained the readiness model on Azure, it was registered, compared with the stale model in service, and deployed. See [Azure ML](docs/azure-ml.md) |
 | Teardown | Done on 25/11/2026: `lab`, `foundation` and `bootstrap` destroyed, and nothing of the project left in the subscription. It found three problems in the destroy path ([runbook](docs/teardown-and-redeploy.md), section 9) |
-| Re-creation from empty, and measured cost | **Not done yet.** Cost data lags, so the total comes the next day |
+| Re-creation from empty | Done on 25/11/2026 with `scripts/up-all.ps1`: `bootstrap`, `foundation` and `lab` applied, the site and Function came up, and `terraform plan` showed No changes in all three roots. It hit two problems ([troubleshooting 46 and 47](docs/troubleshooting.md)) |
+| Measured cost, and a reading sent after the rebuild | **Not done yet.** Cost data lags, so the total comes the next day |
 | IoT Hub forwarder Function | Deployed on Flex Consumption in East US. Three readings from a simulated device reached Laravel through IoT Hub and the Function on 25/11/2026. Classic App Service plans failed on a quota of 0 ([troubleshooting 40](docs/troubleshooting.md)) |
 | CI plan and apply | Not written yet |
 
@@ -77,7 +78,7 @@ For a full explanation, see [Architecture](docs/architecture.md).
 
 ### Limitations
 
-- **Created once, destroyed once, not re-created.** The environment was applied on 24/11/2026 and torn down on 25/11/2026, which found three problems in the destroy path ([troubleshooting 43, 44 and 45](docs/troubleshooting.md)). A clean second run, and `scripts/up.ps1`, are untested. The runbook is [Teardown and redeploy](docs/teardown-and-redeploy.md).
+- **Created, destroyed and re-created once each.** The environment was applied on 24/11/2026, torn down on 25/11/2026 (three problems, [troubleshooting 43, 44 and 45](docs/troubleshooting.md)) and built again from empty the same day (two more, 46 and 47). `scripts/up-all.ps1` ran for real. `scripts/down-all.ps1`, which wraps the three destroys that were run by hand, has not run yet. The runbook is [Teardown and redeploy](docs/teardown-and-redeploy.md).
 - **Synthetic ML data.** The KNN model is trained on a synthetic dataset, so Azure ML here is a pipeline exercise, not a modelling one.
 - **The Function runs on Flex Consumption in East US, and was checked with a simulated device only.** Classic App Service plans failed on a Free Trial quota of 0 in three regions ([troubleshooting 40](docs/troubleshooting.md)). The API key is a plain app setting, and on its first start the Function replayed 20 readings that were still held in IoT Hub. The real ESP32 has not been tried.
 - **Simulated device.** The real ESP32 firmware posts plain HTTP with an API key. Talking to IoT Hub needs firmware changes, so the lab uses a Python device simulator.

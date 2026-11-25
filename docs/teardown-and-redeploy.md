@@ -3,7 +3,7 @@
 This article is the runbook for removing everything this project created in Azure, proving nothing is left, and then building it again from an empty subscription.
 
 > [!NOTE]
-> **The teardown (sections 1 to 4) ran once, on 25/11/2026, and section 9 records what happened. The redeploy (sections 5 to 7) has not been run.** `scripts/up.ps1` has never run against Azure. Commands marked as run were run, and the rest are expected to work and must be read before they are run. Record what actually happens in [troubleshooting](troubleshooting.md).
+> **The teardown (sections 1 to 4) and the redeploy from empty (sections 5 to 7) each ran once, on 25/11/2026, and sections 9 and 10 record what happened.** Both now have a one-command form: `scripts/down-all.ps1` and `scripts/up-all.ps1`. `up-all.ps1` ran for real. `down-all.ps1` has not: only the three destroys it wraps were run, by hand, and its first real run is the final teardown. Commands marked as run were run, and the rest must be read before they are run. Record what actually happens in [troubleshooting](troubleshooting.md).
 
 ## 1. Who owns what
 
@@ -173,7 +173,7 @@ Idempotence is the first row. Create-then-destroy twice with the same results is
 - **Quota.** 4 vCPUs in the subscription. The Azure ML cluster uses 2 per node, and one node fits next to the lab.
 - **The application repository branch** must be reachable, because the Dockerfiles are not on `main`.
 - **MySQL 8.0** loses standard support on 31/12/2026, so a lab that lives past that date should use a newer version.
-- **The scripts are untested.** `up.ps1` and `down.ps1` have never run against Azure, so expect to fix a flag or two.
+- **The scripts are lightly tested.** `up-all.ps1` and `up.ps1` ran once for real and needed two fixes (troubleshooting 46 and 47). `down.ps1` ran for real and needed three. `down-all.ps1` has never run, so expect to fix a flag or two.
 - **A different subscription** needs a new `subscription_id`, the preflight, `bootstrap` again, and a check of which names, quotas and regions change.
 
 ## 8. Suggested timeline for this subscription
@@ -232,4 +232,25 @@ The Free Trial credit expires on 02/12/2026. Cost data lags 8 to 24 hours, so me
 
 **Found afterwards:** the project's Log Analytics workspace was left soft-deleted ([troubleshooting 45](troubleshooting.md)).
 
-**Not known yet:** the measured cost (Cost analysis lags 8 to 24 hours), and whether the redeploy works.
+**Not known yet:** the measured cost (Cost analysis lags 8 to 24 hours).
+
+## 10. What happened on the redeploy, 25/11/2026
+
+The redeploy ran the same day as the teardown, with `scripts/up-all.ps1 -Seed`, which reads the Pusher key, the app repository path and the device name from files, so nothing is typed.
+
+| Step | Result |
+|---|---|
+| `bootstrap` | Applied. The state storage account got a new random name, and the script rewrote both `backend.hcl` files and `state_storage_account_name` in the `foundation` tfvars |
+| `foundation` | 17 added |
+| Soft-deleted `log-hive-lab` | The script found it, recovered it into `rg-hive-lab` and deleted it for good. The `lab` apply then had no name clash, so the workaround in [troubleshooting 45](troubleshooting.md) worked |
+| `lab`, first pass | Stopped on a 412 for `flask-ml` ([troubleshooting 46](troubleshooting.md)). The rerun replaced the tainted app |
+| Image push | `docker login` unauthorized ([troubleshooting 47](troubleshooting.md)), then fixed |
+| `lab`, second pass, migrate and seed | Applied. The migrate Job ran twice, both `Succeeded` (the migration, then the seed) |
+| Function code | Uploaded, and `forward_reading` registered |
+| Proof | `terraform plan -detailed-exitcode`: **No changes** in `bootstrap`, `foundation` and `lab` |
+| Checks | `/up` and `/login` returned 200. The three apps were `Succeeded` and `Running`. Device `NODE-28ZRUR` registered. The registry admin user was `false`. MySQL public network access was `Disabled` |
+| Time | The last full run took 21 minutes. The first attempt and the two reruns took longer, and I did not time them |
+
+*Table 10.1. The redeploy, step by step.*
+
+**Not done yet:** a simulated reading sent through IoT Hub after the rebuild, with the Function forwarding it and a prediction and a Telegram alert following. The final teardown with `down-all.ps1`, and the measured cost, also remain.

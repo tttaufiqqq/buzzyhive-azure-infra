@@ -675,3 +675,44 @@ If the name is not actually blocked, the apply simply works and these commands a
 **Status:** the soft-deleted workspace is verified. Whether it blocks a redeploy is not known.
 
 **Lesson:** after a teardown, list what is soft-deleted (`az keyvault list-deleted` and the workspace list), because a name that looks free in the resource list can still be reserved.
+
+## 46. The first `lab` apply of the redeploy fails with 412 on a Container App, and leaves the app tainted
+
+**Symptom:** during the redeploy on 25/11/2026, `terraform apply` in `lab` created the web app, the worker, the database, the Function and the alert, then failed:
+
+```text
+Error: retrieving secrets for Container App (... Container App Name: "flask-ml"): unexpected status 412 (412 Precondition Failed) received with no body
+  with azurerm_container_app.flask
+```
+
+**State afterwards:** `az containerapp list` showed all three apps `Succeeded` and `Running`, including `flask-ml`. Terraform had marked `azurerm_container_app.flask` as **tainted**, which means it plans to replace it.
+
+**Cause, not proven:** the three Container Apps are created at the same time in one environment, and the provider reads the secrets of `flask-ml` while Azure is still changing it. A 412 means the version the provider holds is out of date. This is a known kind of race in the provider. It did not happen on 24/11/2026.
+
+**Fix:** running the same command again. The second plan showed 1 to add and 1 to destroy (the tainted app being replaced), and it applied cleanly.
+
+**Prevention, added and not tested against a real 412:**
+- `lab/containerapps.tf`: `flask-ml` now depends on the web app and the worker, so the three are created one after another. `terraform plan` stayed at No changes, so the ordering alone changes nothing that already exists.
+- `scripts/up.ps1`: if an apply fails, it waits 30 seconds, plans again, asks again and applies once more. A second failure is shown as it is, and answering no is never retried. The retry rules were checked with a stand-in for Terraform under Windows PowerShell 5.1 (four cases), not against Azure.
+
+**Lesson:** read the state before reacting to a failed apply. Here the resource was healthy, and a tainted resource is replaced, not repaired, by the next apply.
+
+## 47. `docker login` to the new registry is unauthorized in the redeploy script
+
+**Symptom:** in `up.ps1`, step 3, the login failed straight after the script enabled the registry's admin user:
+
+```text
+Error response from daemon: Get "https://<registry>/v2/": unauthorized: {"errors":[{"code":"UNAUTHORIZED", ...
+```
+
+The script had already switched the admin user off again (`adminUserEnabled` was `false`), as designed.
+
+**What is known:** on 24/11/2026 the same login worked once the password went through an environment variable ([troubleshooting 26](troubleshooting.md)), which is what the script already did. The difference was time. On 24/11/2026 the admin user was enabled by hand and used later, while the script uses the password within a second or two.
+
+**Cause, not proven:** Azure may need a short while before it accepts a new admin credential.
+
+**Fix, added:** before `docker login`, the script calls `https://<registry>/v2/` from Windows with the credential (in a header, not on a command line) and waits until the answer is 200, up to 3 minutes. Then it tries `docker login` up to three times. If Windows is accepted and WSL is not, it says that this is the PowerShell-to-WSL problem from entry 26.
+
+**Status:** the rerun with this change finished. I did not record whether the wait loop printed anything, so I do not know whether the timing guess was right or the failure simply did not repeat.
+
+**Lesson:** a credential created a moment ago is not proof that the service has seen it. Check it from the outside before blaming the tool that uses it.

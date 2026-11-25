@@ -1,5 +1,7 @@
 # Deploy, redeploy, and destroy
 
+> **Short way:** `scripts/up-all.ps1 -Seed` builds everything from empty and `scripts/down-all.ps1` removes everything. They need the git-ignored tfvars files and `scripts/local.settings.json`. The steps below are what they do, one root at a time. See [Teardown and redeploy](teardown-and-redeploy.md).
+
 This article shows the steps to deploy the infrastructure, change it, and delete it, with what happened when they were run on 24/11/2026.
 
 > [!NOTE]
