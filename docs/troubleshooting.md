@@ -568,3 +568,23 @@ The same event created a second problem. The new registry is a Basic registry wi
 **Fix:** `functions/forwarder/host.json` now sets `extensions.eventHubs.initialOffsetOptions.type` to `fromEnd`, so a fresh Function starts at the end of the stream. It only matters for the first start, because checkpoints exist afterwards. The running app was not redeployed with it, and it already has its checkpoint, so it will not replay again. The trade-off: messages sent before the first start are skipped.
 
 **Status:** the setting is written but has not run. The 20 replayed rows were not removed.
+
+## 42. The plan shows a change right after the Function was deployed
+
+**Symptom:** the drift check before the teardown (`terraform plan -detailed-exitcode` in each root) gave `No changes` for `bootstrap` and `foundation`, but `lab` returned exit code 2: `Plan: 0 to add, 1 to change, 0 to destroy`, on `azurerm_function_app_flex_consumption.forwarder`.
+
+**What the plan showed** (values hidden with a filter, because the app settings hold the API key and a connection string):
+
+- `tags`: `- "hidden-link: /app-insights-resource-id"` removed.
+- `app_settings`: `+ "AzureWebJobsStorage"` added.
+
+**Cause:** two read-back differences, not changes that anyone made.
+
+- Azure adds the `hidden-link` tag itself when a Function app is linked to Application Insights, and the configuration does not declare it.
+- The provider does not read `AzureWebJobsStorage` back, so it always plans to add it. The setting exists on the app: `az functionapp config appsettings list --query "[].name"` listed it (names only), together with `DEPLOYMENT_STORAGE_CONNECTION_STRING`, which Azure adds itself.
+
+**Fix:** `ignore_changes` for `tags["hidden-link: /app-insights-resource-id"]` and `app_settings["AzureWebJobsStorage"]` on the Flex Function app, and for the tag on the classic one (`lab/iot.tf`). The consequence is written in a comment: a rotated storage key will not reach the app by itself.
+
+**Result:** `terraform plan -detailed-exitcode` then returned `No changes` and exit code 0 in all three roots on 25/11/2026.
+
+**Lesson:** the same as entry 33. Azure adds things to a resource after it is created, so run the drift check after every new resource type, and list setting names, never values, when you check what is on an app.

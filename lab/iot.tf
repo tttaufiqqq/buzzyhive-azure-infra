@@ -92,6 +92,9 @@ resource "azurerm_linux_function_app" "forwarder" {
   }
 
   lifecycle {
+    # Azure adds this tag when the app is linked to Application Insights.
+    ignore_changes = [tags["hidden-link: /app-insights-resource-id"]]
+
     precondition {
       condition     = var.function_api_key != null
       error_message = "Set function_api_key when enable_function is true."
@@ -160,6 +163,16 @@ resource "azurerm_function_app_flex_consumption" "forwarder" {
   }
 
   lifecycle {
+    # Two read-back differences that made every plan show a change after the apply:
+    #  - Azure adds the hidden-link tag when the app is linked to Application Insights.
+    #  - The provider does not read AzureWebJobsStorage back, although it is set on the app
+    #    (checked on 25/11/2026 with az functionapp config appsettings list, names only).
+    # Consequence: a rotated storage key will not reach the app by itself. Change the setting by hand.
+    ignore_changes = [
+      tags["hidden-link: /app-insights-resource-id"],
+      app_settings["AzureWebJobsStorage"],
+    ]
+
     precondition {
       condition     = var.function_api_key != null
       error_message = "Set function_api_key when enable_function is true."

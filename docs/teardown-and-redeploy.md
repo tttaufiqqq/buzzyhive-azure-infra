@@ -29,7 +29,7 @@ The order is forced by the dependencies:
    Copy them somewhere outside the repository, such as a password manager or an encrypted folder. Do not commit them.
 2. **Push the application repository's branch** that holds the Dockerfiles (`feat/docker-containerization`). The images are built from it, and it is not merged. If the branch exists only on one laptop, a redeploy depends on that laptop.
 3. **Collect the evidence you still want.** The lab will not exist afterwards: a Cost analysis view, a final resource list, anything else for the write-up. Blur identifiers before adding screenshots to `docs/evidence/`.
-4. **Prove the lab is idempotent before destroying it.** In each of `bootstrap`, `foundation` and `lab`, run `terraform plan -detailed-exitcode`. Exit code `0` means "No changes". Anything else is drift to explain first. (Known: the `lab` root ignores the Consumption workload profile and the Azure ML registry attachment on purpose.)
+4. **Prove the lab is idempotent before destroying it.** In each of `bootstrap`, `foundation` and `lab`, run `terraform plan -detailed-exitcode`. Exit code `0` means "No changes". Anything else is drift to explain first. (Known: the `lab` root ignores, on purpose, the Consumption workload profile, the Azure ML registry attachment, and two read-back differences on the Function app: its Application Insights tag and `AzureWebJobsStorage`. On 25/11/2026 all three roots returned `No changes` once those were declared.)
 5. **Turn off the admin user** of the registry Azure ML created, if it is still on: `az acr update -n <name> -g rg-hive-lab --admin-enabled false`.
 
 ## 3. Teardown
