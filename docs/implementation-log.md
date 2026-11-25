@@ -129,6 +129,14 @@ The Function that forwards IoT Hub messages to Laravel was written, then hosted 
 <img src="evidence/147-function-invocations-four-success.png" alt="Function Invocations page: 4 successes, 0 errors, with durations" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 3.15. The Invocations page: four successes and no errors. The first, at 07:36, handled the 20 replayed messages in 20.5 seconds. The next three took 1.3 to 1.4 seconds each.*
 
+### 3.3 25/11/2026: the first teardown
+
+- Before: drift check in all three roots (the Function needed two `ignore_changes`, troubleshooting 42) and a verified backup of the files that are not in git.
+- `lab`: stopped once on the Key Vault secrets (43), then finished. Three resources that Terraform never owned were deleted next, and a PowerShell 5.1 bug also deleted the foundation's managed identity (44).
+- `foundation`: 16 destroyed. `bootstrap`: 5 destroyed. The subscription then held only Azure's own Network Watcher.
+- Afterwards: the Log Analytics workspace was found soft-deleted with its name reserved (45).
+- Not done: the redeploy from empty, and the measured cost.
+
 ## 4. Problems found before deployment
 
 Found before any resource existed in Azure, mostly by building and running the images. "Running" means reproduced. "Code read" means found by reading the app, then confirmed or fixed in a build. "Review" means reasoned from documented behaviour and not yet confirmed. Entries with a troubleshooting number have a symptom-to-fix write-up.

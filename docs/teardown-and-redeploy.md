@@ -3,7 +3,7 @@
 This article is the runbook for removing everything this project created in Azure, proving nothing is left, and then building it again from an empty subscription.
 
 > [!NOTE]
-> **None of this has been run.** The lab was created once on 24/11/2026 and has not been destroyed. `scripts/down.ps1` and `scripts/up.ps1` were written for it and have never run against Azure. Every command below is labelled by what is known: commands that were run during the first deployment are marked as such, the rest are expected to work and must be read before they are run. Record what actually happens in [troubleshooting](troubleshooting.md).
+> **The teardown (sections 1 to 4) ran once, on 25/11/2026, and section 9 records what happened. The redeploy (sections 5 to 7) has not been run.** `scripts/up.ps1` has never run against Azure. Commands marked as run were run, and the rest are expected to work and must be read before they are run. Record what actually happens in [troubleshooting](troubleshooting.md).
 
 ## 1. Who owns what
 
@@ -122,6 +122,7 @@ What legitimately remains, and cannot be removed cleanly:
 
 Prerequisites: `az login`, Terraform, Docker in WSL, the application repository on the branch with the Dockerfiles, and the backed-up `terraform.tfvars` files.
 
+0. **Check for a reserved name.** The Log Analytics workspace `log-hive-lab` was left soft-deleted by the first teardown, and its name may be reserved for a few days ([troubleshooting 45](troubleshooting.md)). The workaround is in that entry. This has not been tried.
 1. **Preflight.** From Git Bash in the repo root: `bash scripts/preflight.sh malaysiawest southeastasia`. It checks providers, the MySQL SKU, the quota and the IoT Hub region.
 2. **`bootstrap`.** Delete the old local state first (`bootstrap/terraform.tfstate*`), then:
    ```powershell
@@ -186,3 +187,49 @@ The Free Trial credit expires on 02/12/2026. Cost data lags 8 to 24 hours, so me
 | About 29/11/2026 | Section 5 and 6: full redeploy from empty, and the proof |
 | About 29 to 30/11/2026 | Cost analysis for the first session, once the data appears. Replace the estimates in [Cost and teardown](cost-and-teardown.md) |
 | No later than 01/12/2026 | A second full teardown. The state storage lives in the subscription that expires, so delete it before then |
+
+## 9. What happened on 25/11/2026
+
+| Step | Result |
+|---|---|
+| Drift check before the teardown | `bootstrap` and `foundation`: No changes. `lab`: one change, the Function's read-back differences ([troubleshooting 42](troubleshooting.md)), then No changes |
+| Backup of the three git-ignored files | Identical to the originals by hash |
+| `down.ps1 -DryRun` | Matched the steps in section 3 |
+| `down.ps1`, the `lab` root | The plan said 54 to destroy (Terraform also counts objects that are not separate resources in the group, such as the Key Vault secrets and random values). Most were destroyed, then it stopped on six Key Vault secrets: `DeleteNotSupported` ([troubleshooting 43](troubleshooting.md)). The script was fixed and the rerun destroyed the remaining 3 |
+| Leftovers | The Azure ML registry, the Smart Detection action group and the Failure Anomalies rule, as predicted. `-CleanupOnly` deleted them, and also the managed identity that `foundation` owns, because of a Windows PowerShell 5.1 bug ([troubleshooting 44](troubleshooting.md)) |
+| `foundation` | `terraform plan -destroy` listed 16 (the identity was already dropped). 16 destroyed, the policy assignments taking about 1 minute 40 seconds |
+| `bootstrap` | 5 destroyed, the resource group in 21 seconds |
+| Final inventory | The subscription held only `NetworkWatcherRG` and `NetworkWatcher_malaysiawest`, which Azure creates itself. The older `budget-lab-monthly` budget and the `SecurityCenterBuiltIn` policy assignment are not part of this project |
+
+*Table 9.1. The first teardown, step by step.*
+
+<img src="evidence/156-down-dry-run-first-version.png" alt="down.ps1 dry run printing every step" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.1. `down.ps1 -DryRun`, with the script as it was then: every step printed, nothing run.*
+
+<img src="evidence/157-down-run-resource-list-part1.png" alt="down.ps1 step 1 listing the first resources in rg-hive-lab" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.2. The real run, step 1: the first part of the list of resources in `rg-hive-lab`. The NIC names carry random ids that are covered.*
+
+<img src="evidence/158-down-run-resource-list-part2-and-init.png" alt="down.ps1 end of the resource list and terraform init" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.3. The rest of the list, and step 2: `terraform init` reusing the provider plugins.*
+
+<img src="evidence/159-down-plan-54-to-destroy-and-confirm.png" alt="terraform destroy plan: 54 to destroy, outputs going to null, and the prompt to type the resource group name" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.4. The destroy plan: 54 to destroy, the outputs that go to null, and the prompt to type the resource group name. The lab URL is covered.*
+
+<img src="evidence/163-portal-six-resources-after-lab-destroy.png" alt="Azure portal list of six resources left in the subscription after the lab destroy" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.5. The portal's list of everything in the subscription after the `lab` destroy and before the cleanup: the Azure ML registry, the two Application Insights items, the managed identity, Azure's Network Watcher and the state storage. The account name is covered.*
+
+<img src="evidence/165-foundation-plan-destroy-16.png" alt="terraform plan destroy in foundation listing 16 resources" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.6. `foundation`: `terraform plan -destroy` lists 16 to destroy. The managed identity is not among them, because it had already been deleted.*
+
+<img src="evidence/167-foundation-destroy-complete-16.png" alt="terraform destroy in foundation: 16 destroyed" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.7. `foundation`: `Destroy complete! Resources: 16 destroyed.`, the policy assignments taking 1 minute 38 seconds. The subscription in the ids is covered.*
+
+<img src="evidence/166-checks-after-foundation-budget-and-entra.png" alt="az group list, budget list and Entra queries after the foundation destroy" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.8. The checks after `foundation`: only `NetworkWatcherRG` and `rg-hive-iac` remain, the older `budget-lab-monthly` budget is not part of this project, and the Entra group and app queries return nothing.*
+
+<img src="evidence/168-bootstrap-destroy-complete-5.png" alt="terraform destroy in bootstrap: 5 destroyed" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 9.9. `bootstrap`: `Destroy complete! Resources: 5 destroyed.`, the resource group in 21 seconds. The subscription in the ids is covered.*
+
+**Found afterwards:** the project's Log Analytics workspace was left soft-deleted ([troubleshooting 45](troubleshooting.md)).
+
+**Not known yet:** the measured cost (Cost analysis lags 8 to 24 hours), and whether the redeploy works.

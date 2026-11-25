@@ -610,7 +610,16 @@ The same event created a second problem. The new registry is a Basic registry wi
 
 **Result:** the rerun destroyed the remaining 3 resources (the vault in 16 seconds, plus two random values). The script then listed what Terraform never owned, exactly as the runbook predicted: the registry that Azure ML created, the `Application Insights Smart Detection` action group and the `Failure Anomalies - appi-hive-lab` rule that Azure creates for Application Insights, plus the managed identity that `foundation` owns and removes later. No `ME_` group was left.
 
-**Not verified here:** that the vault was purged (`az keyvault list-deleted`), which is a separate check in the runbook.
+<img src="evidence/160-down-key-vault-secret-delete-errors.png" alt="terraform apply output with repeated DeleteNotSupported errors for Key Vault secrets" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 43.1. The `DeleteNotSupported` errors, one per Key Vault secret. The subscription and resource paths in the URLs are covered.*
+
+<img src="evidence/161-down-rerun-plan-3-to-destroy.png" alt="down.ps1 rerun plan: 3 to destroy" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 43.2. The rerun, after the secrets were taken out of the state: the plan has 3 to destroy.*
+
+<img src="evidence/162-down-rerun-complete-and-leftovers.png" alt="down.ps1 rerun finishing with 3 destroyed and listing the leftovers Terraform never owned" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 43.3. The rerun finished (`3 destroyed`), and step 5 listed what Terraform never owned: the Azure ML registry, the Smart Detection action group and the Failure Anomalies rule.*
+
+**Verified afterwards:** `az keyvault list-deleted` listed no vault of this project, so the vault was purged and its name is free.
 
 **Lessons:**
 
@@ -631,7 +640,10 @@ The same event created a second problem. The new registry is a Basic registry wi
 | PowerShell 7, old | 4 | 3 |
 | Windows PowerShell 5.1, fixed | 4 | 3 |
 
-**Impact:** the identity was deleted outside Terraform. The `foundation` root is being destroyed next, and `terraform destroy` refreshes the state first, so a resource that no longer exists should simply drop out of it. That has not been checked yet. The three intended leftovers were deleted correctly, and nothing else was affected: the state storage in `rg-hive-iac` is outside the group the script looks at.
+<img src="evidence/164-down-cleanup-only-deletes-four-bug.png" alt="down.ps1 CleanupOnly output showing System.Object[] in the list, Delete these 1 now, and four resources deleted" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 44.1. The cleanup run that went wrong: the list prints as `System.Object[]`, it asks `Delete these 1 now?`, and it deletes all four resources, including the foundation's managed identity.*
+
+**Impact:** the identity was deleted outside Terraform. The `foundation` root was destroyed next, and `terraform destroy` refreshes the state first, so the missing identity simply dropped out: the destroy plan listed 16 objects without it, and all 16 were destroyed. The three intended leftovers were deleted correctly, and nothing else was affected: the state storage in `rg-hive-iac` is outside the group the script looks at.
 
 **Fix:** the script now parses the text and flattens it with `ForEach-Object`, refuses to delete anything if an item is not a plain resource with string fields, and refuses outright if the managed identity ever appears in the delete list.
 
@@ -640,3 +652,26 @@ The same event created a second problem. The new registry is a Basic registry wi
 - Test a script in the shell the person runs. This repository's notes already said Windows PowerShell 5.1, and the test ran in PowerShell 7.
 - A list that prints as `System.Object[]` before a destructive question is a stop sign. The script should refuse instead of asking.
 - An allowlist protects only if the data it filters has the shape you think it has.
+
+## 45. A destroyed lab leaves its Log Analytics workspace soft-deleted, and its name reserved
+
+**Symptom:** after the teardown, the subscription held no resources of the project, but `az monitor log-analytics workspace list-deleted-workspaces` listed `log-hive-lab`, the project's workspace. The same list held workspaces that belong to other projects in the subscription (`log-pldns-*`, `cacheaside-*`, `law-lab`), and `az keyvault list-deleted` held `kv-lab-03`. Those are not part of this project and were left alone.
+
+**Cause:** Azure keeps a deleted Log Analytics workspace for a few days so that it can be recovered, and during that time its name stays reserved. The provider does not purge it unless it is told to. Every other name in this project either has a random suffix (the Key Vaults, which the provider already purges) or lives in a resource group that no longer exists. The workspace name, `log-hive-lab`, has no suffix.
+
+**Effect:** a redeploy within that window may fail when it tries to create a workspace with the same name. That has not been tried.
+
+**Fix for the next teardown:** `lab/main.tf` now sets `log_analytics_workspace { permanently_delete_on_destroy = true }` in the provider features, next to the existing Key Vault and ML settings.
+
+**Workaround for this time, not run:** the resource group that held the workspace was destroyed with `foundation`, which blocks recovery. After `foundation` is applied again (it recreates `rg-hive-lab`), recover the workspace and delete it for good before applying `lab`:
+
+```powershell
+az monitor log-analytics workspace recover -g rg-hive-lab -n log-hive-lab
+az monitor log-analytics workspace delete -g rg-hive-lab -n log-hive-lab --force true --yes
+```
+
+If the name is not actually blocked, the apply simply works and these commands are not needed. The other option is to wait out the retention period.
+
+**Status:** the soft-deleted workspace is verified. Whether it blocks a redeploy is not known.
+
+**Lesson:** after a teardown, list what is soft-deleted (`az keyvault list-deleted` and the workspace list), because a name that looks free in the resource list can still be reserved.
