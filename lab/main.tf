@@ -33,6 +33,11 @@ provider "azurerm" {
     machine_learning {
       purge_soft_deleted_workspace_on_destroy = true
     }
+    # The Log Analytics workspace name has no random suffix. Without this, a destroyed workspace stays
+    # soft-deleted for days and its name stays reserved (found after the first teardown, 25/11/2026).
+    log_analytics_workspace {
+      permanently_delete_on_destroy = true
+    }
   }
 }
 
