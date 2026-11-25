@@ -103,15 +103,24 @@ if ($DryRun) {
   # Azure ML creates its own, untagged Container Registry on the first job (24/11/2026). It is not in
   # Terraform state, so destroy leaves it behind, and it keeps billing. The resource group is kept,
   # so anything still inside it now is a leftover.
-  $left = (& az resource list -g $ResourceGroup --query "[].{name:name, type:type}" -o table | Out-String).Trim()
-  if ($left) {
-    Write-Warning "Still inside $ResourceGroup after the destroy. Terraform did not create these, so delete them yourself:"
-    Write-Host $left
+  # The managed identity id-hive-lab-apps lives in this group but belongs to the foundation root, so
+  # it is expected to remain until foundation is destroyed. Everything else is a leftover.
+  $all = & az resource list -g $ResourceGroup --query "[].{name:name, type:type}" -o json | ConvertFrom-Json
+  $mine = @($all | Where-Object { $_.type -ne "Microsoft.ManagedIdentity/userAssignedIdentities" })
+  $owned = @($all | Where-Object { $_.type -eq "Microsoft.ManagedIdentity/userAssignedIdentities" })
+  if ($owned.Count -gt 0) { Note "Expected to remain (owned by foundation): $(($owned | ForEach-Object { $_.name }) -join ', ')" }
+  if ($mine.Count -gt 0) {
+    Write-Warning "Still inside $ResourceGroup after the destroy. Terraform did not create these, so check each and delete it yourself:"
+    $mine | Format-Table -AutoSize | Out-String | Write-Host
     Write-Host "   A leftover registry: az acr delete -n <name> -g $ResourceGroup --yes" -ForegroundColor Yellow
+    Write-Host "   Azure also creates some resources itself for Application Insights (a Smart Detection action group, a Failure Anomalies rule)." -ForegroundColor Yellow
+  } else {
+    Note "Nothing else is left in $ResourceGroup."
   }
   Write-Host "   Resources still tagged project=buzzyhive (the foundation identity is expected):"
   & az resource list --tag project=buzzyhive --query "[].{name:name, group:resourceGroup, type:type}" -o table
-  $managed = (& az group list --query "[?starts_with(name,'ME_')].name" -o tsv | Out-String).Trim()
+  # Filter in PowerShell, not in the az query: the quoting of a JMESPath filter breaks in some shells.
+  $managed = ((& az group list --query "[].name" -o tsv) | Where-Object { $_ -like "ME_*" }) -join ", "
   if ($managed) { Write-Warning "A managed resource group is still there: $managed. Container Apps normally removes it a few minutes after the environment goes." }
 }
 

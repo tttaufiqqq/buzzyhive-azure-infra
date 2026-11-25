@@ -56,13 +56,21 @@ The `lab` provider is configured to purge soft-deleted Key Vaults and Azure ML w
 az resource list -g rg-hive-lab -o table
 ```
 
-After the destroy this should be empty. It will not be, if Azure ML created its own registry. Delete it, using the name from the listing:
+After the destroy, this should hold the managed identity `id-hive-lab-apps` and little else. The identity sits in this group but belongs to `foundation`, which removes it in step 3.3, so leave it. `down.ps1` prints it as "expected to remain".
+
+Anything else is something Terraform never owned. Before the destroy, the group held 38 resources, and the likely leftovers are:
+
+- **The registry Azure ML created** (untagged, admin user on). Certain.
+- **A second action group and a `smartDetectorAlertRules` entry** that Azure creates itself for Application Insights. This is inferred from the resource types in the listing (two action groups, one smart detector rule), so read the names before deleting anything.
+
+Check what each one is, then delete it:
 
 ```powershell
 az acr delete -n <registry name> -g rg-hive-lab --yes
+az resource delete --ids <resource id>        # for each other leftover, with the id from: az resource list -g rg-hive-lab --query "[].{name:name, id:id}" -o table
 ```
 
-Run `az resource list -g rg-hive-lab -o table` again until it prints nothing. Only then continue.
+Run `az resource list -g rg-hive-lab -o table` again until only the identity is left. Only then continue. A resource group that still holds anything blocks its own deletion in step 3.3.
 
 ### 3.3 `foundation`
 
