@@ -74,3 +74,22 @@ function Get-LocalSettings([string]$ScriptsDir) {
   if (-not (Test-Path $p)) { return New-Object psobject }
   return (Get-Content -Raw $p | ConvertFrom-Json)
 }
+
+
+# Arguments for a container that runs a piece of PHP with Laravel booted, and nothing else. The code is sent as
+# base64, so no quote or bracket of it ever passes through PowerShell 5.1 and az.cmd, which mangle them
+# (troubleshooting 48). The one short argument has no space and no quote:  eval(base64_decode($argv[1]));
+function New-PhpRunnerArgs([string]$Php) {
+  $boot = 'require getcwd() . "/vendor/autoload.php"; $app = require getcwd() . "/bootstrap/app.php"; ' +
+          '$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); '
+  $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($boot + $Php))
+  return @("php", "-r", 'eval(base64_decode($argv[1]));', $b64)
+}
+
+# PHP that gives the first seeded IoT node the identifier the IoT Hub device has, unless some node has it already.
+function Get-RenameNodePhp([string]$Identifier) {
+  if ($Identifier -notmatch '^[A-Za-z0-9-]{3,40}$') { throw "Device name '$Identifier' has characters this script does not allow." }
+  return '$id = "' + $Identifier + '"; $t = Illuminate\Support\Facades\DB::table("iot_nodes"); ' +
+         'if ((clone $t)->where("node_identifier", $id)->exists()) { echo "NODE_ALREADY_PRESENT"; } else { ' +
+         '$n = (clone $t)->where("id", (clone $t)->min("id"))->update(["node_identifier" => $id]); echo "NODE_RENAMED_ROWS=" . $n; }'
+}

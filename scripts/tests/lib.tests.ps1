@@ -68,6 +68,20 @@ $deleted = @("log-pldns-dev-sea", "log-hive-lab", "cacheaside-xrckov-law", "kv-l
 Check "finds ours by prefix"                 ((Select-ByPrefix $deleted @("log-hive", "kv-hive", "kvml-hive")) -join ",") "log-hive-lab,kv-hive-ci1yu"
 Check "other projects are not matched"       ((Select-ByPrefix @("log-pldns-dev-sea", "kv-lab-03") @("log-hive", "kv-hive")).Count) 0
 
+"New-PhpRunnerArgs / Get-RenameNodePhp (the device-name step)"
+$phpArgs = New-PhpRunnerArgs (Get-RenameNodePhp "NODE-28ZRUR")
+Check "four arguments"                        $phpArgs.Count 4
+Check "php -r and the eval line"              ($phpArgs[0] + " " + $phpArgs[1] + " " + $phpArgs[2]) 'php -r eval(base64_decode($argv[1]));'
+Check "no quote or space in args 1 to 3"      (($phpArgs[0..2] -join '') -match '["''\s]') $false
+Check "the payload is plain base64"           ($phpArgs[3] -match '^[A-Za-z0-9+/=]+$') $true
+$decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($phpArgs[3]))
+Check "decoded code names the device"         ($decoded.Contains('$id = "NODE-28ZRUR"')) $true
+Check "decoded code boots Laravel"            ($decoded.Contains("bootstrap/app.php")) $true
+foreach ($bad in @('NODE"; drop', 'a b', 'x', "NODE-1'")) {
+  $threw = $false; try { Get-RenameNodePhp $bad | Out-Null } catch { $threw = $true }
+  Check ("refused device name [" + $bad + "]") $threw $true
+}
+
 ""
 if ($failed -eq 0) { Write-Host "All tests passed." -ForegroundColor Green; exit 0 }
 else { Write-Host "$failed test(s) failed." -ForegroundColor Red; exit 1 }

@@ -155,6 +155,16 @@ function Start-JobAndWait([string]$JobName, [int]$TimeoutSeconds) {
   return "TimedOut"
 }
 
+# Make the first seeded node carry the IoT Hub device's name. The seeder gives nodes random identifiers
+# (NODE-XXXXXX), so a device named in advance never matches them (troubleshooting 48). Runs as the migrate Job.
+function Set-FirstNodeIdentifier([string]$Identifier) {
+  $phpArgs = New-PhpRunnerArgs (Get-RenameNodePhp $Identifier)
+  Invoke-Tool az (@("containerapp", "job", "update", "-n", "laravel-migrate", "-g", $ResourceGroup, "--container-name", "migrate", "--args") + $phpArgs + @("-o", "none"))
+  $status = Start-JobAndWait "laravel-migrate" 600
+  if ($status -ne "Succeeded") { Write-Warning "Renaming the node ended as $status. Check it in the database before sending readings." }
+  else { Note "The first seeded node now has the identifier $Identifier." }
+}
+
 # ---------- before anything ----------
 Say "0. Checks"
 if ($DryRun) {
@@ -294,6 +304,7 @@ if ($Seed) {
     if ($status -ne "Succeeded") { Write-Warning "The seed run ended as $status. Read the Job log before going on." }
     Write-Host "   Admin login: admin@buzzyhive.urban-alert.com   password: $pw" -ForegroundColor Yellow
     Write-Host "   Shown once and not saved. Write it down now." -ForegroundColor Yellow
+    if ($RegisterDevice) { Set-FirstNodeIdentifier $RegisterDevice }
     Invoke-TerraformApply "7b. terraform apply (lab), to restore the migrate Job after seeding"
   }
 }
@@ -302,8 +313,13 @@ if ($Seed) {
 if ($RegisterDevice) {
   Say "8. Register the IoT Hub device $RegisterDevice"
   if ($DryRun) {
+    Note "[dry run] give the first seeded node the identifier $RegisterDevice (a Job running PHP, sent as base64)"
     Note "[dry run] az iot hub device-identity create -n <hub> -d $RegisterDevice -o none   (-o none so the keys are not printed)"
   } else {
+    if (-not $Seed) {
+      Set-FirstNodeIdentifier $RegisterDevice
+      Invoke-TerraformApply "8a. terraform apply (lab), to restore the migrate Job after renaming the node"
+    }
     az extension add --name azure-iot --only-show-errors 2>$null | Out-Null
     $hub = Get-ToolOutput terraform @("-chdir=$lab", "output", "-raw", "iothub_name")
     Invoke-Tool az @("iot", "hub", "device-identity", "create", "-n", $hub, "-d", $RegisterDevice, "-o", "none")
