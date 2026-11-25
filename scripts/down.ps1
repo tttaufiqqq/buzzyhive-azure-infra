@@ -130,7 +130,13 @@ if ($DryRun) {
   #  - the registry Azure ML creates on its first job (untagged, admin user on, not in the state)
   #  - the Smart Detection action group and the Failure Anomalies rule Azure creates for Application Insights
   $idType = "Microsoft.ManagedIdentity/userAssignedIdentities"
-  $all = @(& az resource list -g $ResourceGroup --query "[].{name:name, type:type, id:id}" -o json | ConvertFrom-Json)
+  # Windows PowerShell 5.1 returns a JSON array from ConvertFrom-Json as ONE object, so every filter below
+  # would match the whole array and the delete loop would remove everything in it (this deleted the
+  # foundation identity on 25/11/2026). Parse the text, then flatten to one object per resource.
+  $json = (& az resource list -g $ResourceGroup --query "[].{name:name, type:type, id:id}" -o json) -join "`n"
+  $all = @(ConvertFrom-Json $json | ForEach-Object { $_ })
+  $bad = @($all | Where-Object { $_.name -isnot [string] -or $_.type -isnot [string] -or $_.id -isnot [string] })
+  if ($bad.Count -gt 0) { throw "Unexpected data from az (an item is not a plain resource). Refusing to delete anything." }
   $owned = @($all | Where-Object { $_.type -eq $idType })
   if ($owned.Count -gt 0) { Note "Expected to remain (owned by foundation): $(($owned | ForEach-Object { $_.name }) -join ', ')" }
 
@@ -141,6 +147,7 @@ if ($DryRun) {
     })
   $unknown = @($all | Where-Object { $_.type -ne $idType -and (@($known | ForEach-Object { $_.id }) -notcontains $_.id) })
 
+  if (@($known | Where-Object { $_.type -eq $idType }).Count -gt 0) { throw "The managed identity is in the delete list. Refusing to delete anything." }
   if ($known.Count -gt 0) {
     Write-Host "   Leftovers Terraform never owned, safe to delete:"
     $known | ForEach-Object { Write-Host ("     {0}  [{1}]" -f $_.name, $_.type) }

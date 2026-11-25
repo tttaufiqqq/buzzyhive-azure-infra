@@ -616,3 +616,27 @@ The same event created a second problem. The new registry is a Basic registry wi
 
 - A resource type that can be created through an API is not necessarily one that can be deleted through it. Test the destroy path as early as the apply path.
 - Removing something from the state is the right tool when its parent deletes it anyway. It is only bookkeeping, so say so out loud before doing it.
+
+## 44. `down.ps1 -CleanupOnly` also deleted the managed identity that `foundation` owns
+
+**Symptom:** the cleanup step printed its list of leftovers as `System.Object[]  [System.Object[]]`, said `Delete these 1 now? (y/N)`, and after `y` deleted all four resources in `rg-hive-lab`: the three intended leftovers (the Azure ML registry, the Smart Detection action group and the Failure Anomalies rule) **and** `id-hive-lab-apps`, the managed identity that the script is meant to protect.
+
+**Cause:** Windows PowerShell 5.1 returns a JSON array from `ConvertFrom-Json` as one object, not as a list of objects. The script's filters then matched that single object, which carries every name and id, and the delete loop removed every id in it. In PowerShell 7 the same code parses to four objects, so a read-only check of the selection logic, run in PowerShell 7 on 25/11/2026, picked exactly three and looked correct. It was not run in the shell that is actually used.
+
+**Reproduced** with data of the same shape, in both shells:
+
+| Shell and code | Resources parsed | Would delete |
+|---|---|---|
+| Windows PowerShell 5.1, old | 1 | 1 (the whole array) |
+| PowerShell 7, old | 4 | 3 |
+| Windows PowerShell 5.1, fixed | 4 | 3 |
+
+**Impact:** the identity was deleted outside Terraform. The `foundation` root is being destroyed next, and `terraform destroy` refreshes the state first, so a resource that no longer exists should simply drop out of it. That has not been checked yet. The three intended leftovers were deleted correctly, and nothing else was affected: the state storage in `rg-hive-iac` is outside the group the script looks at.
+
+**Fix:** the script now parses the text and flattens it with `ForEach-Object`, refuses to delete anything if an item is not a plain resource with string fields, and refuses outright if the managed identity ever appears in the delete list.
+
+**Lessons:**
+
+- Test a script in the shell the person runs. This repository's notes already said Windows PowerShell 5.1, and the test ran in PowerShell 7.
+- A list that prints as `System.Object[]` before a destructive question is a stop sign. The script should refuse instead of asking.
+- An allowlist protects only if the data it filters has the shape you think it has.
