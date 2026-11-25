@@ -32,6 +32,9 @@ The order is forced by the dependencies:
 4. **Prove the lab is idempotent before destroying it.** In each of `bootstrap`, `foundation` and `lab`, run `terraform plan -detailed-exitcode`. Exit code `0` means "No changes". Anything else is drift to explain first. (Known: the `lab` root ignores, on purpose, the Consumption workload profile, the Azure ML registry attachment, and two read-back differences on the Function app: its Application Insights tag and `AzureWebJobsStorage`. On 25/11/2026 all three roots returned `No changes` once those were declared.)
 5. **Turn off the admin user** of the registry Azure ML created, if it is still on: `az acr update -n <name> -g rg-hive-lab --admin-enabled false`.
 
+<img src="evidence/155-backup-files-listing.png" alt="PowerShell commands copying the three files to a backup folder and listing them with sizes and dates" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 2.1. The three git-ignored files copied to a backup folder, and the listing of their names, sizes and dates. Their contents are not shown.*
+
 ## 3. Teardown
 
 Run these in Windows PowerShell, in this order. Each step touches your subscription, so you run them yourself.

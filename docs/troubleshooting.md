@@ -381,6 +381,9 @@ The seeded hives get random node identifiers, so find a hive id and its node by 
 
 **Update, 25/11/2026:** after the forwarder Function was deployed, Application Insights received its telemetry: in the three hours after the first upload, 312 traces, 4 requests and 1 exception, all from the Function. The Laravel and Flask images still send nothing, so the diagram's claim that the apps report there is still not true, and the choice between adding an exporter to each image and dropping the claim stays open.
 
+<img src="evidence/148-appinsights-application-map-function.png" alt="Application Insights Application map showing one instance, func-hive-lab-ci1yu, with 4 calls" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 32.3. After the Function was deployed, the Application map has data for the first time: one instance, `func-hive-lab-ci1yu`, with 4 calls in the last hour.*
+
 ## 33. Every `terraform plan` proposes to remove the `Consumption` workload profile
 
 **Symptom:** after a clean apply, `terraform plan` was not empty. Adding one variable (`min_replicas` on two apps) showed `6 to change` instead of 2. The extra four were the environment, `laravel-worker` and the two Jobs.
@@ -563,6 +566,9 @@ The same event created a second problem. The new registry is a Basic registry wi
 
 **What the telemetry showed:** the first invocation handled the 20 replayed messages in 20.5 seconds, about one second each. One warning was logged at that first start, `Encountered an exception while getting checkpoints for Event Hub ... used for scaling`, before any checkpoint existed. It did not appear again, and its cause was not investigated.
 
+<img src="evidence/149-iothub-metrics-messages-23.png" alt="IoT Hub metrics: 23 messages used and 2 successful connects" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 41.1. The IoT Hub's own counters: 23 messages used for the day and 2 successful connects. That fits the 20 older messages the Function replayed plus the 3 sent for the test. The account name is covered.*
+
 **Impact:** harmless in this lab, but it is duplicated data.
 
 **Fix:** `functions/forwarder/host.json` now sets `extensions.eventHubs.initialOffsetOptions.type` to `fromEnd`, so a fresh Function starts at the end of the stream. It only matters for the first start, because checkpoints exist afterwards. The running app was not redeployed with it, and it already has its checkpoint, so it will not replay again. The trade-off: messages sent before the first start are skipped.
@@ -588,3 +594,6 @@ The same event created a second problem. The new registry is a Basic registry wi
 **Result:** `terraform plan -detailed-exitcode` then returned `No changes` and exit code 0 in all three roots on 25/11/2026.
 
 **Lesson:** the same as entry 33. Azure adds things to a resource after it is created, so run the drift check after every new resource type, and list setting names, never values, when you check what is on an app.
+
+<img src="evidence/154-drift-bootstrap-no-changes.png" alt="terraform plan detailed-exitcode in bootstrap: No changes, exit 0" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 42.1. The drift check in `bootstrap`: `No changes`, exit code 0. `foundation` returned the same, and `lab` did after the fix.*

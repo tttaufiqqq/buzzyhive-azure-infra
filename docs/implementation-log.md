@@ -86,6 +86,49 @@ Before any apply, `terraform fmt -check`, `init -backend=false` and `validate` r
 <img src="evidence/03-offline-checks-foundation-lab.png" alt="The end of the same loop: foundation and lab both initialise and report that the configuration is valid" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 3.2. The end of the same run: `foundation` and `lab` valid. Everything these checks missed is in section 5.*
 
+### 3.2 25/11/2026: the forwarder Function
+
+The Function that forwards IoT Hub messages to Laravel was written, then hosted on Flex Consumption after the classic plans failed on quota. The attempts and their errors are in [troubleshooting 40](troubleshooting.md). These are the steps as they looked.
+
+<img src="evidence/136-tfvars-enable-function-true.png" alt="lab terraform.tfvars with enable_function set to true" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.3. `lab/terraform.tfvars` with `enable_function = true`. The comment on that line, "the function code is not written yet", was out of date by then.*
+
+<img src="evidence/137-tfvars-function-location-southeastasia.png" alt="lab terraform.tfvars with function_location set to southeastasia, subscription and email lines covered" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.4. The first attempt to move the Function to Southeast Asia, next to the IoT Hub, with `function_location = "southeastasia"`. The subscription and email lines above are covered.*
+
+<img src="evidence/138-apply-error-b1-quota-zero-southeastasia.png" alt="terraform apply error for the App Service plan: Current Limit B1 App Service instances 0" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.5. The apply error for `B1` in Southeast Asia: `Current Limit (B1 App Service instances): 0`. The subscription in the error line is covered.*
+
+<img src="evidence/139-tfvars-plan-y1-eastus.png" alt="lab terraform.tfvars with function_hosting plan, function_plan_sku Y1 and function_location eastus" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.6. The next attempt: `function_hosting = "plan"`, `function_plan_sku = "Y1"` and `function_location = "eastus"`. It failed on the same quota.*
+
+<img src="evidence/143-tfvars-flex-eastus.png" alt="lab terraform.tfvars with function_hosting flex and function_location eastus" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.7. The setting that worked: `function_hosting = "flex"` and `function_location = "eastus"`.*
+
+<img src="evidence/144-function-app-overview-flex-eastus.png" alt="Azure portal overview of the Function app: Running, East US, Flex Consumption, 512 MB, with the forward_reading function listed" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.8. The Function app in the portal: running, East US, Flex Consumption, 512 MB instances, with `forward_reading` listed and enabled with an Event Hub trigger. The subscription ID and account are covered.*
+
+<img src="evidence/140-deploy-function-dry-run.png" alt="scripts/deploy-function.ps1 dry run output" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.9. `scripts\deploy-function.ps1 -DryRun`: the five steps it would take.*
+
+<img src="evidence/141-deploy-function-forward-reading-registered.png" alt="deploy-function.ps1 run ending with forward_reading is registered, after a typo on the first attempt" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.10. The real run, after a typo (`.ps` instead of `.ps1`): the zip contents, the upload, and `forward_reading is registered`.*
+
+<img src="evidence/145-function-code-test-forward-reading.png" alt="Azure portal Code and Test page showing the deployed function_app.py" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.11. The deployed `function_app.py`, as the portal shows it.*
+
+<img src="evidence/146-function-integration-event-hub-trigger.png" alt="Azure portal Integration page: an Azure Event Hubs trigger feeding forward_reading, with no outputs" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.12. The Integration page: an Azure Event Hubs trigger feeding `forward_reading`, with no outputs defined.*
+
+<img src="evidence/150-storage-container-function-deploy.png" alt="Storage account container function-deploy holding a 1.05 MiB zip and a state file" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.13. The `function-deploy` container in the storage account: the uploaded code package (1.05 MiB) and the platform's state file. A Flex Consumption app runs its code from here. The account name and the package name are covered.*
+
+<img src="evidence/142-simulate-device-three-readings.png" alt="simulate_device.py sending three readings, all sent" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.14. Three readings from the simulated device, sent five seconds apart.*
+
+<img src="evidence/147-function-invocations-four-success.png" alt="Function Invocations page: 4 successes, 0 errors, with durations" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 3.15. The Invocations page: four successes and no errors. The first, at 07:36, handled the 20 replayed messages in 20.5 seconds. The next three took 1.3 to 1.4 seconds each.*
+
 ## 4. Problems found before deployment
 
 Found before any resource existed in Azure, mostly by building and running the images. "Running" means reproduced. "Code read" means found by reading the app, then confirmed or fixed in a build. "Review" means reasoned from documented behaviour and not yet confirmed. Entries with a troubleshooting number have a symptom-to-fix write-up.

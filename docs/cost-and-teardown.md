@@ -63,6 +63,31 @@ The Resource Manager list shows more than this project. The rows named `pldns` (
 - **Check before blaming this project for the spend.** Group Cost analysis by resource group. `rg-hive-lab` and `rg-hive-iac` are this project, and `rg-pldns-*` is the other one.
 - **An Azure Firewall bills for every hour it exists.** I have not checked whether that one is running or what it costs. If that project is finished, deleting it is likely the largest saving available, but it is not mine to delete from here.
 
+### 1.4 What Cost analysis showed on 25/11/2026 (partial)
+
+A first look at Cost analysis, scoped to the subscription, dated 24/11/2026 to 25/11/2026 and filtered on the tag `project = buzzyhive`.
+
+**This is not the cost of the lab.** Cost data lags by 8 to 24 hours, and the services that should cost the most still showed `$0.00` (the MySQL server, among others) when these screenshots were taken. Read the figures as what had been billed so far.
+
+| View | Figure |
+|---|---|
+| Actual cost so far | **US$0.46** |
+| Azure's forecast for the chart | US$5.85 (an extrapolation from partial data, not a measurement) |
+| By service | Virtual Network $0.32, Container Registry $0.09, Azure DNS $0.02, Storage $0.02, Key Vault under $0.01 |
+| By location | Malaysia West $0.43, global $0.02 |
+| By resource group | `rg-hive-lab` about $0.40, the Container Apps infrastructure group about $0.06, `rg-hive-iac` under $0.01 |
+
+*Table 1.4. The partial figures. The measured total has to come from Cost analysis after the destroy, with the data caught up.*
+
+<img src="evidence/151-cost-analysis-landing.png" alt="Cost Management Cost analysis landing page for the Free Trial subscription" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 1.4. Cost analysis for the Free Trial subscription, before a view was chosen.*
+
+<img src="evidence/152-cost-analysis-project-tag-0-46-usd.png" alt="Cost analysis 24 to 25 November 2026 filtered on project buzzyhive: actual cost 0.46 US dollars, forecast 5.85" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 1.5. Cost analysis for 24 and 25/11/2026, filtered on the tag `project = buzzyhive`: US$0.46 actual and a chart forecast of US$5.85. The account name is covered.*
+
+<img src="evidence/153-cost-analysis-by-service-vnet-registry.png" alt="Cost analysis breakdown by service, location and resource group" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 1.6. The same view broken down by service, location and resource group. The account name is covered.*
+
 ## 2. How to check your own cost
 
 1. In the Azure Portal, open **Cost Management**, then **Cost analysis**.
