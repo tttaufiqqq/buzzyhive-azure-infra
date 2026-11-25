@@ -54,3 +54,6 @@ azureml/out/
 # Azure ML log downloads saved by hand
 std_log.txt
 run_aggregate_log.txt
+
+# Local script settings (app repo path, device name)
+scripts/local.settings.json
