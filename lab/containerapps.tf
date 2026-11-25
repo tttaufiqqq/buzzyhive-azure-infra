@@ -271,7 +271,13 @@ resource "azurerm_container_app" "flask" {
     }
   }
 
-  depends_on = [azurerm_role_assignment.acr_pull]
+  # Created after the other two apps, not beside them: creating three apps in one environment at the same
+  # time made Azure answer 412 Precondition Failed on the secrets read (troubleshooting 46).
+  depends_on = [
+    azurerm_role_assignment.acr_pull,
+    azurerm_container_app.web,
+    azurerm_container_app.worker,
+  ]
 }
 
 # ---------- Jobs: scheduler and migrations ----------

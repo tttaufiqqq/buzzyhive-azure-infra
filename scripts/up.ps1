@@ -53,8 +53,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\lib.ps1"
 $root = Split-Path $PSScriptRoot -Parent
 $lab = Join-Path $root "lab"
+# Nothing to type: the Pusher key comes from lab\terraform.tfvars, the app repo from scripts\local.settings.json.
+$localSettings = Get-LocalSettings $PSScriptRoot
+if (-not $AppRepo -and $localSettings.appRepo) { $AppRepo = $localSettings.appRepo }
+if (-not $PusherKey -and (Test-Path (Join-Path $lab "terraform.tfvars"))) { $PusherKey = Get-TfvarsString (Join-Path $lab "terraform.tfvars") "pusher-app-key" }
 $autoVars = Join-Path $lab "zz-images.auto.tfvars"
 $started = Get-Date
 
@@ -101,9 +106,21 @@ function Invoke-TerraformApply([string]$Label) {
   Run "terraform plan -out=session.tfplan, ask, then terraform apply session.tfplan (in lab)" {
     Push-Location $lab
     try {
-      Invoke-Tool terraform @("plan", "-input=false", "-no-color", "-out=session.tfplan")
-      Confirm-Step "Apply this plan to Azure now?"
-      Invoke-Tool terraform @("apply", "-input=false", "-no-color", "session.tfplan")
+      # One retry: Azure sometimes answers a transient error (412 on a Container App, troubleshooting 46) that a
+      # second plan and apply clears, because the resource is already there and only marked tainted. A fresh plan is
+      # shown and confirmed before the retry. A "Stopped:" (you said no) is never retried.
+      for ($attempt = 1; $attempt -le 2; $attempt++) {
+        try {
+          Invoke-Tool terraform @("plan", "-input=false", "-no-color", "-out=session.tfplan")
+          Confirm-Step "Apply this plan to Azure now?"
+          Invoke-Tool terraform @("apply", "-input=false", "-no-color", "session.tfplan")
+          break
+        } catch {
+          if ($attempt -ge 2 -or $_.Exception.Message -like "Stopped:*") { throw }
+          Write-Warning "The apply failed: $($_.Exception.Message). Waiting 30 seconds, then planning and applying once more."
+          Start-Sleep -Seconds 30
+        }
+      }
     } finally {
       Remove-Item "session.tfplan" -Force -ErrorAction SilentlyContinue   # it can contain secret values
       Pop-Location
@@ -205,7 +222,23 @@ if ($SkipImages) {
       $env:ACR_PW = Get-ToolOutput az @("acr", "credential", "show", "-n", $acrName, "--query", "passwords[0].value", "-o", "tsv")
       $env:WSLENV = "ACR_PW"
       & wsl -u root -e bash -lc "service docker start" | Out-Null          # the engine stops now and then
-      Invoke-Tool wsl @("-e", "bash", "-lc", "docker login $server -u $user -p `"`$ACR_PW`"")
+      # A new admin credential can take a little while to be accepted (seen 25/11/2026, troubleshooting 46).
+      # Prove it works from Windows first (the password goes in a header, not on a command line), then log in.
+      $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${user}:$($env:ACR_PW)"))
+      $accepted = $false
+      for ($i = 1; $i -le 18 -and -not $accepted; $i++) {
+        try {
+          $r = Invoke-WebRequest -Uri "https://$server/v2/" -Headers @{ Authorization = "Basic $basic" } -UseBasicParsing -TimeoutSec 20
+          if ($r.StatusCode -eq 200) { $accepted = $true }
+        } catch { Note "registry does not accept the admin credential yet (try $i of 18), waiting 10 seconds" ; Start-Sleep -Seconds 10 }
+      }
+      if (-not $accepted) { throw "The registry still rejects the admin credential after 3 minutes. Check: az acr show -n $acrName --query adminUserEnabled" }
+      $loggedIn = $false
+      for ($i = 1; $i -le 3 -and -not $loggedIn; $i++) {
+        & wsl -e bash -lc "docker login $server -u $user -p `"`$ACR_PW`""
+        if ($LASTEXITCODE -eq 0) { $loggedIn = $true } else { Note "docker login failed (try $i of 3)"; Start-Sleep -Seconds 10 }
+      }
+      if (-not $loggedIn) { throw "The registry accepts the credential from Windows but docker login in WSL fails. This is the PowerShell-to-WSL problem from troubleshooting 26." }
 
       $laravelBuild = @("--cd", $AppRepo, "-e", "docker", "build", "-t", $laravelRef)
       if ($PusherKey) { $laravelBuild += @("--build-arg", "VITE_PUSHER_APP_KEY=$PusherKey") }
