@@ -117,3 +117,99 @@ function Invoke-AzDirect([string[]]$AzArgs) {
   & $inv.Exe @($inv.Prefix + $AzArgs)
   if ($LASTEXITCODE -ne 0) { throw "az $($AzArgs -join ' ') failed with exit code $LASTEXITCODE" }
 }
+
+
+# ---------- Retries (third rebuild, 25 to 26/11/2026: troubleshooting 51, and the network failures in the runbook) ----------
+
+# How to react to a failed command, judged from its own output.
+#   capacity : Azure has no room for the resource right now (InsufficientCapacityForPlacement). It clears in minutes
+#              to hours, so wait 5 minutes, up to 6 times. A 30 second wait cannot help.
+#   network  : a dropped connection, a timeout or a DNS failure on this side. Wait 30 seconds, up to 5 times.
+#   other    : one retry after 30 seconds (the 412 race of troubleshooting 46 is cleared by a second attempt).
+function Get-RetryPolicy([string]$Text) {
+  if ($Text -match 'InsufficientCapacity|capacity constraints|ServerCapacity') {
+    return New-Object psobject -Property @{ Kind = "capacity"; MaxRetries = 6; WaitSeconds = 300 }
+  }
+  if ($Text -match 'connection (may have been )?reset|timeout awaiting response|i/o timeout|TLS handshake timeout|no such host|unexpected EOF|Client\.Timeout|could not connect|Could not connect|connection refused|temporary failure in name resolution|Unable to connect|actively refused') {
+    return New-Object psobject -Property @{ Kind = "network"; MaxRetries = 5; WaitSeconds = 30 }
+  }
+  return New-Object psobject -Property @{ Kind = "other"; MaxRetries = 1; WaitSeconds = 30 }
+}
+
+# Runs a command with its output shown live AND kept, so a failure can be classified. The command line goes through
+# cmd.exe so that stderr and stdout are merged at the operating system level (PowerShell 5.1 turns a native
+# command's stderr into errors). The console is set to UTF-8 meanwhile, so Terraform's box characters survive.
+# Returns an object with ExitCode and Text. -Quiet keeps the output and does not show it.
+function Invoke-ToolCaptured([string]$Exe, [string[]]$ToolArgs, [switch]$Quiet) {
+  $parts = @($(if ($Exe -match '[\s&|<>^()]') { '"' + $Exe + '"' } else { $Exe }))
+  foreach ($a in $ToolArgs) {
+    if ($a -match '"') { throw "Invoke-ToolCaptured cannot pass an argument that contains a double quote: $a" }
+    if ($a -match '[\s&|<>^()]') { $parts += ('"' + $a + '"') } else { $parts += $a }
+  }
+  # The whole command line goes into an environment variable, and cmd is given it inside one more pair of quotes,
+  # which cmd /s strips. That form survives a program path with spaces (C:\Program Files\...) and quoted arguments.
+  $env:BUZZYHIVE_CMDLINE = ($parts -join " ") + " 2>&1"
+  $old = [Console]::OutputEncoding
+  $lines = New-Object System.Collections.ArrayList
+  try {
+    try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
+    & cmd.exe /d /s /c '"%BUZZYHIVE_CMDLINE%"' | ForEach-Object {
+      $t = [string]$_
+      [void]$lines.Add($t)
+      if (-not $Quiet) { Write-Host $t }
+    }
+    $code = $LASTEXITCODE
+  } finally {
+    try { [Console]::OutputEncoding = $old } catch { }
+    Remove-Item Env:BUZZYHIVE_CMDLINE -ErrorAction SilentlyContinue
+  }
+  return New-Object psobject -Property @{ ExitCode = $code; Text = ($lines -join "`n") }
+}
+
+# Like Invoke-Tool, but the exception carries the command's output (in Data["Output"]) for the retry policy.
+function Invoke-ToolRetryable([string]$Exe, [string[]]$ToolArgs, [switch]$Quiet) {
+  $r = Invoke-ToolCaptured $Exe $ToolArgs -Quiet:$Quiet
+  if ($r.ExitCode -ne 0) {
+    $ex = New-Object System.Exception ("$Exe $($ToolArgs -join ' ') failed with exit code $($r.ExitCode)")
+    $ex.Data["Output"] = $r.Text
+    throw $ex
+  }
+  return $r.Text
+}
+
+# Runs $Attempt until it succeeds or the policy for its error is used up. $Attempt receives one argument: $true when
+# the person should be asked to confirm again. That is the first try, and any retry after an "other" error. After a
+# capacity or network error the same plan is simply tried again, so a 30 minute wait does not need someone at the
+# keyboard. A "Stopped:" (the person said no) is never retried. $Wait is a scriptblock taking seconds.
+function Invoke-WithRetryPolicy([scriptblock]$Attempt, [string]$What, [scriptblock]$Wait = { param($s) Start-Sleep -Seconds $s }) {
+  $retries = 0
+  $confirm = $true
+  while ($true) {
+    try { & $Attempt $confirm; return }
+    catch {
+      if ($_.Exception.Message -like "Stopped:*") { throw }
+      $text = $_.Exception.Data["Output"]
+      if (-not $text) { $text = $_.Exception.Message }
+      $p = Get-RetryPolicy $text
+      if ($retries -ge $p.MaxRetries) { throw }
+      $retries++
+      $confirm = ($p.Kind -eq "other")
+      Write-Warning ("$What failed ($($p.Kind) error): $($_.Exception.Message). Waiting $($p.WaitSeconds) seconds, then trying again (retry $retries of $($p.MaxRetries)).")
+      & $Wait $p.WaitSeconds
+    }
+  }
+}
+
+# The names from the list that do NOT resolve in DNS. Used before the build starts: the third rebuild lost time to
+# "no such host" for registry.terraform.io on a campus network.
+function Get-UnresolvedNames([string[]]$Names) {
+  $bad = @()
+  foreach ($n in $Names) {
+    $ok = $false
+    for ($i = 1; $i -le 3 -and -not $ok; $i++) {
+      try { $null = Resolve-DnsName -Name $n -ErrorAction Stop; $ok = $true } catch { if ($i -lt 3) { Start-Sleep -Seconds 3 } }
+    }
+    if (-not $ok) { $bad += $n }
+  }
+  return $bad
+}

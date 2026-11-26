@@ -77,11 +77,15 @@ function Invoke-RootApply([string]$Dir, [string]$Name, [bool]$UseBackend) {
   if ($DryRun) { Note "[dry run] terraform init, plan -out=$Name.tfplan, ask, apply (in $Name)"; return }
   Push-Location $Dir
   try {
-    if ($UseBackend) { Invoke-Tool terraform @("init", "-reconfigure", "-input=false", "-backend-config=backend.hcl") }
-    else { Invoke-Tool terraform @("init", "-input=false") }
-    Invoke-Tool terraform @("plan", "-input=false", "-no-color", "-out=$Name.tfplan")
-    Confirm-Step "Apply the $Name plan to Azure now?"
-    Invoke-Tool terraform @("apply", "-input=false", "-no-color", "$Name.tfplan")
+    # Same retry policy as lab\up.ps1 (lib.ps1, Get-RetryPolicy): capacity, network and other errors are told apart.
+    $initArgs = if ($UseBackend) { @("init", "-reconfigure", "-input=false", "-backend-config=backend.hcl") } else { @("init", "-input=false") }
+    Invoke-WithRetryPolicy -What "terraform init ($Name)" -Attempt { param([bool]$AskAgain) Invoke-ToolRetryable terraform $initArgs | Out-Null }
+    Invoke-WithRetryPolicy -What "The $Name apply" -Attempt {
+      param([bool]$AskAgain)
+      Invoke-ToolRetryable terraform @("plan", "-input=false", "-no-color", "-out=$Name.tfplan") | Out-Null
+      if ($AskAgain) { Confirm-Step "Apply the $Name plan to Azure now?" }
+      Invoke-ToolRetryable terraform @("apply", "-input=false", "-no-color", "$Name.tfplan") | Out-Null
+    }
   } finally {
     Remove-Item "$Name.tfplan" -Force -ErrorAction SilentlyContinue   # a plan file can hold secret values
     Pop-Location
@@ -91,7 +95,7 @@ function Invoke-RootApply([string]$Dir, [string]$Name, [bool]$UseBackend) {
 # ---------- 0. checks ----------
 Say "0. Checks"
 if ($DryRun) {
-  Note "[dry run] would check: az and terraform on PATH, az login, foundation\terraform.tfvars, lab\terraform.tfvars"
+  Note "[dry run] would check: az and terraform on PATH, az login, foundation\terraform.tfvars, lab\terraform.tfvars, DNS for management.azure.com, login.microsoftonline.com and registry.terraform.io"
 } else {
   foreach ($c in "az", "terraform") { if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { throw "$c is not on PATH." } }
   $null = az account show --query id -o tsv 2>$null
@@ -99,6 +103,9 @@ if ($DryRun) {
   foreach ($f in @((Join-Path $foundation "terraform.tfvars"), (Join-Path $lab "terraform.tfvars"))) {
     if (-not (Test-Path $f)) { throw "$f is missing. Copy it back from Documents\buzzyhive-backup." }
   }
+  # The third rebuild lost time to DNS failures on a campus network, so stop early, with a clear message, if names do not resolve.
+  $unresolved = @(Get-UnresolvedNames @("management.azure.com", "login.microsoftonline.com", "registry.terraform.io"))
+  if ($unresolved.Count -gt 0) { throw "DNS does not resolve: $($unresolved -join ', '). Fix the connection (try a phone hotspot or a public DNS server such as 1.1.1.1) and run this again. Nothing has been changed." }
   if (-not (Test-TfvarsTrue (Join-Path $lab "terraform.tfvars") "enable_function")) { Write-Warning "enable_function is not true in lab\terraform.tfvars, so the Function will not be created." }
 }
 

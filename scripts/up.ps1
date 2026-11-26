@@ -106,20 +106,16 @@ function Invoke-TerraformApply([string]$Label) {
   Run "terraform plan -out=session.tfplan, ask, then terraform apply session.tfplan (in lab)" {
     Push-Location $lab
     try {
-      # One retry: Azure sometimes answers a transient error (412 on a Container App, troubleshooting 46) that a
-      # second plan and apply clears, because the resource is already there and only marked tainted. A fresh plan is
-      # shown and confirmed before the retry. A "Stopped:" (you said no) is never retried.
-      for ($attempt = 1; $attempt -le 2; $attempt++) {
-        try {
-          Invoke-Tool terraform @("plan", "-input=false", "-no-color", "-out=session.tfplan")
-          Confirm-Step "Apply this plan to Azure now?"
-          Invoke-Tool terraform @("apply", "-input=false", "-no-color", "session.tfplan")
-          break
-        } catch {
-          if ($attempt -ge 2 -or $_.Exception.Message -like "Stopped:*") { throw }
-          Write-Warning "The apply failed: $($_.Exception.Message). Waiting 30 seconds, then planning and applying once more."
-          Start-Sleep -Seconds 30
-        }
+      # Retries by kind of error (lib.ps1, Get-RetryPolicy): a capacity shortage waits 5 minutes, up to 6 times
+      # (troubleshooting 51); a dropped connection waits 30 seconds, up to 5 times; anything else gets one retry
+      # after 30 seconds (the 412 race, troubleshooting 46). Every retry plans again. After an "other" error the
+      # new plan is confirmed again; after a capacity or network error the same intent is simply tried again.
+      # A "Stopped:" (you said no) is never retried.
+      Invoke-WithRetryPolicy -What "The apply" -Attempt {
+        param([bool]$AskAgain)
+        Invoke-ToolRetryable terraform @("plan", "-input=false", "-no-color", "-out=session.tfplan") | Out-Null
+        if ($AskAgain) { Confirm-Step "Apply this plan to Azure now?" }
+        Invoke-ToolRetryable terraform @("apply", "-input=false", "-no-color", "session.tfplan") | Out-Null
       }
     } finally {
       Remove-Item "session.tfplan" -Force -ErrorAction SilentlyContinue   # it can contain secret values
@@ -192,7 +188,7 @@ if ($DryRun) {
 Say "1. terraform init (lab)"
 Run "terraform init -reconfigure -backend-config=backend.hcl" {
   Push-Location $lab
-  try { Invoke-Tool terraform @("init", "-reconfigure", "-input=false", "-backend-config=backend.hcl") } finally { Pop-Location }
+  try { Invoke-WithRetryPolicy -What "terraform init" -Attempt { param([bool]$AskAgain) Invoke-ToolRetryable terraform @("init", "-reconfigure", "-input=false", "-backend-config=backend.hcl") | Out-Null } } finally { Pop-Location }
 }
 
 # ---------- 2. first apply, with the placeholder image ----------
@@ -256,9 +252,17 @@ if ($SkipImages) {
       $laravelBuild += @("--build-arg", "VITE_PUSHER_APP_CLUSTER=$PusherCluster", ".")
       Invoke-Tool wsl $laravelBuild
       Invoke-Tool wsl @("--cd", (Join-Path $AppRepo "ml"), "-e", "docker", "build", "-t", $flaskRef, ".")
-      Invoke-Tool wsl @("-e", "docker", "push", $laravelRef)
-      Invoke-Tool wsl @("-e", "docker", "push", $flaskRef)
-      Note ("Repositories now in the registry: " + ((Get-ToolOutput az @("acr", "repository", "list", "-n", $acrName, "-o", "tsv")) -replace "\s+", ", "))
+      # A push is retried because a long upload can time out on a poor connection (26/11/2026); layers that already
+      # arrived are skipped by the registry, so a retry only sends what is missing.
+      foreach ($ref in @($laravelRef, $flaskRef)) {
+        Invoke-WithRetryPolicy -What "docker push $ref" -Attempt { param([bool]$AskAgain) Invoke-ToolRetryable wsl @("-e", "docker", "push", $ref) | Out-Null }
+      }
+      # Informational only: the pushes above already proved the images arrived, so a failed listing must not stop the build.
+      try {
+        $repos = ""
+        Invoke-WithRetryPolicy -What "listing the registry" -Attempt { param([bool]$AskAgain) $script:repos = Invoke-ToolRetryable az @("acr", "repository", "list", "-n", $acrName, "-o", "tsv") -Quiet }
+        Note ("Repositories now in the registry: " + ($script:repos.Trim() -replace "\s+", ", "))
+      } catch { Write-Warning "Could not list the registry's repositories ($($_.Exception.Message)). The pushes succeeded, so the build goes on." }
     } finally {
       Remove-Item Env:ACR_PW -ErrorAction SilentlyContinue
       & az acr update -n $acrName --admin-enabled false --only-show-errors -o none 2>$null   # always switch it off again

@@ -110,6 +110,91 @@ Check "the code argument arrives unchanged"   $got[3] $sent[1]
 Check "the payload arrives unchanged"         $got[4] $sent[2]
 Remove-Item $probe -Force
 
+"Get-RetryPolicy (which wait for which error)"
+$cap = Get-RetryPolicy "Error: creating MySQL Flexible Server: Code=`"InsufficientCapacityForPlacement`""
+Check "capacity: kind"                        $cap.Kind "capacity"
+Check "capacity: 6 retries, 300 seconds"      ("$($cap.MaxRetries)/$($cap.WaitSeconds)") "6/300"
+$net1 = Get-RetryPolicy "retrieving the keys: connection may have been reset"
+$net2 = Get-RetryPolicy "dial tcp: lookup registry.terraform.io: no such host"
+$net3 = Get-RetryPolicy "received unexpected EOF while pushing; net/http: timeout awaiting response headers"
+$net4 = Get-RetryPolicy "ERROR: Could not connect to the registry login server 'x.azurecr.io'"
+Check "connection reset is a network error"   $net1.Kind "network"
+Check "no such host is a network error"       $net2.Kind "network"
+Check "a push timeout is a network error"     $net3.Kind "network"
+Check "an unreachable registry is a network error" $net4.Kind "network"
+Check "network: 5 retries, 30 seconds"        ("$($net1.MaxRetries)/$($net1.WaitSeconds)") "5/30"
+$oth = Get-RetryPolicy "Error: 412 Precondition Failed"
+Check "anything else: one retry, 30 seconds"  ("$($oth.Kind)/$($oth.MaxRetries)/$($oth.WaitSeconds)") "other/1/30"
+Check "capacity wins over network wording"    (Get-RetryPolicy "InsufficientCapacityForPlacement ... connection reset").Kind "capacity"
+
+"Invoke-WithRetryPolicy (no sleeping: the wait is recorded)"
+function New-RetryableError([string]$Text) {
+  $e = New-Object System.Exception "failed"; $e.Data["Output"] = $Text; return $e
+}
+$script:waits = @(); $script:calls = 0; $script:asks = @()
+$recordWait = { param($s) $script:waits += $s }
+# capacity twice, then success: two waits of 300 s, and nobody is asked again
+Invoke-WithRetryPolicy -What "t" -Wait $recordWait -Attempt {
+  param([bool]$AskAgain)
+  $script:calls++; $script:asks += $AskAgain
+  if ($script:calls -le 2) { throw (New-RetryableError "InsufficientCapacityForPlacement") }
+} 3>$null
+Check "capacity x2 then success: 3 calls"     $script:calls 3
+Check "waits were 300 and 300"                ($script:waits -join ",") "300,300"
+Check "asked first, then not after capacity"  ($script:asks -join ",") "True,False,False"
+# another kind of error twice: one retry, then it gives up with the error
+$script:waits = @(); $script:calls = 0; $script:asks = @()
+$threw = $false
+try { Invoke-WithRetryPolicy -What "t" -Wait $recordWait -Attempt { param([bool]$AskAgain) $script:calls++; $script:asks += $AskAgain; throw (New-RetryableError "412 Precondition Failed") } 3>$null } catch { $threw = $true }
+Check "other: threw after the second call"    ($threw -and $script:calls -eq 2) $true
+Check "other: one wait of 30 s"               ($script:waits -join ",") "30"
+Check "other: asked again on the retry"       ($script:asks -join ",") "True,True"
+# network: five retries, so six calls, then it gives up
+$script:waits = @(); $script:calls = 0
+$threw = $false
+try { Invoke-WithRetryPolicy -What "t" -Wait $recordWait -Attempt { param([bool]$AskAgain) $script:calls++; throw (New-RetryableError "connection may have been reset") } 3>$null } catch { $threw = $true }
+Check "network: 6 calls then gives up"        ($threw -and $script:calls -eq 6) $true
+# capacity never clears: 6 retries (7 calls) of 300 s, about 30 minutes
+$script:waits = @(); $script:calls = 0
+$threw = $false
+try { Invoke-WithRetryPolicy -What "t" -Wait $recordWait -Attempt { param([bool]$AskAgain) $script:calls++; throw (New-RetryableError "InsufficientCapacityForPlacement") } 3>$null } catch { $threw = $true }
+Check "capacity: 7 calls then gives up"       ($threw -and $script:calls -eq 7) $true
+Check "capacity: waited 30 minutes in all"    (($script:waits | Measure-Object -Sum).Sum) 1800
+# the person said no: never retried
+$script:waits = @(); $script:calls = 0
+$threw = $false
+try { Invoke-WithRetryPolicy -What "t" -Wait $recordWait -Attempt { param([bool]$AskAgain) $script:calls++; throw "Stopped: you did not type yes." } 3>$null } catch { $threw = $true }
+Check "Stopped: is not retried"               ($threw -and $script:calls -eq 1 -and $script:waits.Count -eq 0) $true
+# an error from the script itself has no captured output: its message is used
+$script:calls = 0; $script:waits = @()
+Invoke-WithRetryPolicy -What "t" -Wait $recordWait -Attempt { param([bool]$AskAgain) $script:calls++; if ($script:calls -eq 1) { throw "lookup x: no such host" } } 3>$null
+Check "plain message is classified too"       ($script:calls -eq 2 -and ($script:waits -join ",") -eq "30") $true
+
+"Invoke-ToolCaptured / Invoke-ToolRetryable (real output, kept and classified)"
+$probe2 = Join-Path ([IO.Path]::GetTempPath()) ("outprobe-" + [guid]::NewGuid().ToString("N") + ".py")
+Set-Content -Path $probe2 -Encoding ASCII -Value @(
+  "import sys",
+  "sys.stdout.buffer.write((chr(0x2502) + ' Error: InsufficientCapacityForPlacement\n').encode('utf-8'))",
+  "sys.stderr.write('written on stderr\n')",
+  "sys.exit(int(sys.argv[1]))")
+$r1 = Invoke-ToolCaptured $py @($probe2, "1") -Quiet
+Check "exit code is kept"                     $r1.ExitCode 1
+Check "stdout text is kept"                   ($r1.Text -like "*InsufficientCapacityForPlacement*") $true
+Check "stderr text is kept"                   ($r1.Text -like "*written on stderr*") $true
+Check "the box character survives (UTF-8)"    $r1.Text.Contains([string][char]0x2502) $true
+$r0 = Invoke-ToolCaptured $py @($probe2, "0") -Quiet
+Check "exit code 0 is kept"                   $r0.ExitCode 0
+$msg = ""; $carried = ""
+try { Invoke-ToolRetryable $py @($probe2, "3") -Quiet | Out-Null } catch { $msg = $_.Exception.Message; $carried = $_.Exception.Data["Output"] }
+Check "a failure throws with the exit code"   ($msg -like "*failed with exit code 3") $true
+Check "the exception carries the output"      ($carried -like "*InsufficientCapacityForPlacement*") $true
+Check "and the policy reads it as capacity"   (Get-RetryPolicy $carried).Kind "capacity"
+Remove-Item $probe2 -Force
+
+"Get-UnresolvedNames"
+Check "localhost resolves"                    (@(Get-UnresolvedNames @("localhost")).Count) 0
+Check "a name that cannot exist is reported"  ((@(Get-UnresolvedNames @("localhost", "no-such-name.invalid"))) -join ",") "no-such-name.invalid"
+
 ""
 if ($failed -eq 0) { Write-Host "All tests passed." -ForegroundColor Green; exit 0 }
 else { Write-Host "$failed test(s) failed." -ForegroundColor Red; exit 1 }
