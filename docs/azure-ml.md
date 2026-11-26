@@ -1,5 +1,9 @@
 # Train the model in Azure ML
 
+<!-- docs-nav:start -->
+**[← Previous: Cost and teardown](cost-and-teardown.md) | [Docs index](README.md) | [Next: Load test with k6 →](load-test.md)**
+<!-- docs-nav:end -->
+
 This article records how the readiness model was retrained in Azure Machine Learning on 24/11/2026, what the retrained model does differently from the one that was in service, how it was deployed and checked, and what is still unknown.
 
 > [!NOTE]
@@ -137,3 +141,9 @@ Both profiles still reach the alert levels most of the time, but a single readin
 - **The log-streaming error** from the CLI was not investigated.
 - **Screenshots** have not been added to `evidence/`. Blur the subscription, tenant and user details before adding any.
 - **Teardown.** `terraform destroy` removes the workspace, its vault and the registered model, but not the auto-created registry. Delete it by hand.
+
+---
+
+<!-- docs-nav:start -->
+**[← Previous: Cost and teardown](cost-and-teardown.md) | [Docs index](README.md) | [Next: Load test with k6 →](load-test.md)**
+<!-- docs-nav:end -->

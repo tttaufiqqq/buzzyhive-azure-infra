@@ -1,5 +1,9 @@
 # Troubleshooting
 
+<!-- docs-nav:start -->
+**[← Previous: Implementation log](implementation-log.md) | [Docs index](README.md) | [Next: Cost and teardown →](cost-and-teardown.md)**
+<!-- docs-nav:end -->
+
 This article lists problems expected from this design and problems hit while deploying it, and how to resolve them.
 
 > [!NOTE]
@@ -573,7 +577,7 @@ The same event created a second problem. The new registry is a Basic registry wi
 
 **Fix:** `functions/forwarder/host.json` now sets `extensions.eventHubs.initialOffsetOptions.type` to `fromEnd`, so a fresh Function starts at the end of the stream. It only matters for the first start, because checkpoints exist afterwards. The running app was not redeployed with it, and it already has its checkpoint, so it will not replay again. The trade-off: messages sent before the first start are skipped.
 
-**Status:** the setting is written but has not run. The 20 replayed rows were not removed.
+**Status:** the setting is written. It first ran on the third rebuild, where it skipped the first four test readings sent to the new Function ([entry 52](#52-the-first-readings-sent-to-an-idle-function-are-lost)). The 20 replayed rows were not removed.
 
 ## 42. The plan shows a change right after the Function was deployed
 
@@ -786,3 +790,39 @@ unrecognized arguments: -r eval(base64_decode($argv[1])); <base64>
 **Status:** fixed and verified on the real deployment. The final run renamed the first seeded node to `NODE-28ZRUR`.
 
 **Lesson:** a command-line tool has its own parser in front of the program you meant to call, and arguments that look harmless to the shell can mean something to it.
+
+## 51. MySQL cannot be placed: `InsufficientCapacityForPlacement`
+
+**Symptom:** on the third rebuild the apply stopped while creating the MySQL Flexible Server, with the error code `InsufficientCapacityForPlacement`. The state was clean: nothing half-built that Terraform did not know about.
+
+**Cause:** Azure had no free capacity for that server size (`B_Standard_B1ms`) at that moment, in that region. It is a shortage on Azure's side, and it is temporary. Nothing in the Terraform code or the script causes it.
+
+**What the script did:** the apply retry fired after 30 seconds, planned again and tried again, and failed with the same error. That is expected: 30 seconds is the right wait for a race between two resources ([entry 46](#46-the-first-lab-apply-of-the-redeploy-fails-with-412-on-a-container-app-and-leaves-the-app-tainted)), and the wrong wait for a capacity shortage.
+
+**Fix:** at the time, none in the code. I stopped, waited, and ran `up-all.ps1 -Seed` again. Every step is idempotent, so the rerun kept what existed and created the rest. Afterwards the scripts were changed so that they wait by themselves: `Get-RetryPolicy` in `scripts/lib.ps1` reads the failed command's output and, for `InsufficientCapacity`, waits 5 minutes and plans and applies again, up to 6 times (about 30 minutes), without asking again (the same intent is tried again). A dropped connection waits 30 seconds, up to 5 times, and any other error keeps the one retry after 30 seconds, with a new confirmation. The same policy now covers `terraform init`, the `docker push` and the registry check in `up.ps1` and `up-all.ps1`.
+
+**Not done, on purpose:** a check of the size's availability before the build. `az mysql flexible-server list-skus` lists what the region offers, not what is free right now, and B1ms was on that list when the placement failed. The MySQL availability zone was already unset (`ignore_changes = [zone]` and no zone in `lab/data.tf`), so Azure was free to choose one.
+
+**Status:** the retry is tested offline (policy, loop with a recorded wait, output capture with a stand-in program, in Windows PowerShell 5.1). It has **not** been seen against a real capacity error, so it is unproven until one happens. If the shortage lasts longer than about 30 minutes the run still stops, with the error shown, and a rerun is safe.
+
+**Lesson:** a one-command build cannot promise to finish when the cloud has no room. It can only wait and fail with a clear message, and say that a rerun is safe.
+
+## 52. The first readings sent to an idle Function are lost
+
+**Symptom:** after the third rebuild, the simulator sent 10 readings as `NODE-28ZRUR` and reported `10 sent, 0 failed`. The database had only 6 new rows, `sensor_logs` 3076 to 3081, each with one prediction. They were readings 5 to 10: the values matched the simulator's output exactly. Readings 1 to 4 never arrived.
+
+**Cause:** this is the other side of [entry 41](#41-the-function-replayed-the-iot-hubs-backlog-when-it-first-started). The Function reads from IoT Hub through an Event Hub trigger, and `functions/forwarder/host.json` sets `extensions.eventHubs.initialOffsetOptions.type` to `fromEnd`, so a Function with no checkpoint starts at the end of the stream and skips everything sent before it is listening. The Function had no checkpoint, because it had never processed a message, and it needed time to start. The timestamps give the size of that gap: the six stored readings are exactly 5 seconds apart (the simulator's interval), so counting back, reading 1 was sent at about 11:22:43 and reading 4 at about 11:22:58, and reading 5 was stored at 11:23:03 with about a second of lag. The pipeline came alive about **15 to 20 seconds** after the first message. That is one observation from one run.
+
+**It was probably not a deploy-time warm-up.** The build had finished, and I had run checks and you had opened tinker, so the Function had been deployed for several minutes before the readings were sent. A likely explanation is a cold start: a Flex Consumption app can scale to zero and wakes on the first message. I did not show that it had scaled to zero here. Entry 41 set this on purpose, to stop a first start from replaying old messages, and this was its first run on a fresh deploy. I did not read the Function's invocation log, so I cannot show when the first invocation happened, but the setting and the missing rows agree.
+
+**Workaround:** send one or two throwaway readings first and wait about 30 seconds (the gap seen was 15 to 20 seconds), then check that the first one is in `sensor_logs` before the real test. Check the table, not the clock: once the Function has processed a message it is awake and has a checkpoint. Real devices keep sending, so the loss only affects a test sent to an idle Function, for example right after `up-all.ps1`. A better figure needs a second measurement, for example from the Function's invocation log on the next rebuild.
+
+**Status:** open, documented as a behaviour. Changing `fromEnd` to `fromStart` would keep the first readings, but it brings back the replay of entry 41 whenever the Function is created while the hub still holds old messages (the hub keeps them for a day). I have not changed it.
+
+**Lesson:** "accepted by IoT Hub" is not "stored". Check the database for the same count that was sent.
+
+---
+
+<!-- docs-nav:start -->
+**[← Previous: Implementation log](implementation-log.md) | [Docs index](README.md) | [Next: Cost and teardown →](cost-and-teardown.md)**
+<!-- docs-nav:end -->

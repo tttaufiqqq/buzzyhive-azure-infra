@@ -1,5 +1,9 @@
 # Teardown and redeploy
 
+<!-- docs-nav:start -->
+**[← Previous: Load test with k6](load-test.md) | [Docs index](README.md)**
+<!-- docs-nav:end -->
+
 This article is the runbook for removing everything this project created in Azure, proving nothing is left, and then building it again from an empty subscription.
 
 > [!NOTE]
@@ -329,4 +333,40 @@ Read-only checks afterwards: the migrate Job's two executions were `Succeeded`, 
 
 **Not seen:** whether the apply retry or the registry login wait was needed. I did not see the first part of the third run, so I can neither say that they ran nor that they did not.
 
-**Still not known:** the measured cost, and a Telegram alert after a rebuild.
+**Still not known:** a Telegram alert after a rebuild. The measured cost of 24 and 25/11/2026 is in [cost and teardown, section 1.5](cost-and-teardown.md#15-what-cost-analysis-showed-on-26112026-measured-for-24-and-25112026).
+
+## 13. The third redeploy, 25/11/2026 to 26/11/2026
+
+After the second teardown, `up-all.ps1 -Seed` ran a third time from empty. The aim was a build that needs no rerun. **It did not get there**, and every interruption came from Azure or from the network, none from the Terraform code or the scripts.
+
+| Attempt | Result |
+|---|---|
+| First (evening, 25/11) | The MySQL server could not be placed: `InsufficientCapacityForPlacement`. The apply retry fired after 30 seconds and failed the same way ([troubleshooting 51](troubleshooting.md)). I waited and resumed |
+| Second (morning, 26/11) | The plan failed once with a storage `listKeys` error, `connection may have been reset`. The apply retry planned again and went on. Then `docker push` of `flask-ml` timed out (`timeout awaiting response headers`). The `laravel` image was already in the registry, `flask-ml` was not |
+| Third | `flask-ml` pushed, then `az acr repository list` could not connect to the registry's login server |
+| Fourth, on the university network | `terraform init` failed in step 1 with `lookup registry.terraform.io: no such host`. Nothing had been changed. DNS answered for both names a few minutes later |
+| Fifth | Finished in 24.8 minutes (this run only): the Function code uploaded, `forward_reading` registered, and `No changes` in `bootstrap`, `foundation` and `lab` |
+
+*Table 13.1. The third redeploy.*
+
+What this shows: the apply retry fired twice in real failures. It recovered the one that was a connection reset, and it could not help with a capacity shortage. `docker push` and the registry check had no retry, so a dropped connection stopped the run there. Every rerun kept what existed and continued, which is the property that mattered.
+
+**Changed afterwards (not part of this run):** the scripts now retry by kind of error. A capacity shortage waits 5 minutes, up to 6 times; a dropped connection waits 30 seconds, up to 5 times, and covers `terraform init`, the push and the registry check too (a failed registry listing only warns, because the push already proved the images arrived). `up-all.ps1` also stops at step 0 with a clear message if DNS does not resolve. These are tested offline only. The next rebuild is their first real test ([troubleshooting 51](troubleshooting.md)).
+
+Read-only checks afterwards: MySQL `Ready` with public network access `Disabled`, the registry admin user `false` with the repositories `laravel` and `flask-ml`, three migrate executions `Succeeded`, the IoT Hub device `NODE-28ZRUR`, and `/up` returning 200.
+
+**The rename worked a third time.** `iot_nodes` had `id 1` as `NODE-28ZRUR` and 14 other nodes with random names.
+
+**Readings:** the simulator sent 10 readings and all 10 were accepted by IoT Hub. Only 6 reached the database (readings 5 to 10), each with a prediction from the retrained model (`knn_k7_distance-synthetic_readiness_training_flat_v1-sklearn-1.8.0`). The first four, sent to an idle Function that had not processed anything yet, were lost ([troubleshooting 52](troubleshooting.md)). Four of the six were flagged `out_of_distribution`: the simulator's baseline `mq2_value` is 232 to 270, and the training range for it ends at 245. That is the guardrail working, and it says nothing about the infrastructure.
+
+**The third teardown** (`down-all.ps1`, 26/11/2026) took 33.8 minutes and finished clean: `bootstrap` destroyed last (5 resources), only `NetworkWatcherRG` left, no resource tagged `project=buzzyhive`, and no soft-deleted Key Vault or workspace of ours. I confirmed it afterwards with `az group list` and a count of tagged resources (0).
+
+**Not a one-shot:** the build finished, but only after rerunning the script after each interruption. The honest claim is that a rerun is safe and continues where the last run stopped.
+
+**Still not known:** a Telegram alert after a rebuild. The measured cost of 24 and 25/11/2026 is in [cost and teardown, section 1.5](cost-and-teardown.md#15-what-cost-analysis-showed-on-26112026-measured-for-24-and-25112026).
+
+---
+
+<!-- docs-nav:start -->
+**[← Previous: Load test with k6](load-test.md) | [Docs index](README.md)**
+<!-- docs-nav:end -->

@@ -1,9 +1,13 @@
 # Cost and teardown
 
+<!-- docs-nav:start -->
+**[← Previous: Troubleshooting](troubleshooting.md) | [Docs index](README.md) | [Next: Train the model in Azure ML →](azure-ml.md)**
+<!-- docs-nav:end -->
+
 This article shows what the environment is expected to cost, how to check your own cost, and where to find the teardown steps.
 
 > [!NOTE]
-> The service prices below are still estimates from published price lists, not measurements. `lab` was applied on 24/11/2026, but its real cost is not in Cost Management yet (data lags by 8 to 24 hours, and the environment had not been destroyed). Replace the estimates with measured figures after the destroy. The credit balance and expiry date in section 1 are read from the portal. Prices vary by region and change over time; the [Azure pricing calculator](https://azure.microsoft.com/en-us/pricing/calculator/) gives current rates.
+> The service prices in section 1.1 are still estimates from published price lists. The first measured figures are in [section 1.5](#15-what-cost-analysis-showed-on-26112026-measured-for-24-and-25112026): **US$1.53 for 24 and 25/11/2026**, which is far below the estimates, mostly because MySQL billed nothing. Later days were not in Cost Management yet. The credit balance and expiry date in section 1 are read from the portal. Prices vary by region and change over time; the [Azure pricing calculator](https://azure.microsoft.com/en-us/pricing/calculator/) gives current rates.
 
 ## 1. Estimated cost
 
@@ -32,7 +36,7 @@ The same Cost Management overview later that day, with the lab running. It warns
 | Key Vault, Storage | under $1 | Light use |
 | Azure ML compute | only while training | Cluster has `min_nodes = 0` |
 
-**Total: about $50 to 70 per month** if left running, or under $5 for a one-day run.
+**Total: about $50 to 70 per month** if left running, or under $5 for a one-day run. The measured figure for the first two days was lower than that ([section 1.5](#15-what-cost-analysis-showed-on-26112026-measured-for-24-and-25112026)).
 
 ### 1.2 What can break the budget
 
@@ -88,6 +92,40 @@ A first look at Cost analysis, scoped to the subscription, dated 24/11/2026 to 2
 <img src="evidence/153-cost-analysis-by-service-vnet-registry.png" alt="Cost analysis breakdown by service, location and resource group" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 1.6. The same view broken down by service, location and resource group. The account name is covered.*
 
+### 1.5 What Cost analysis showed on 26/11/2026 (measured for 24 and 25/11/2026)
+
+The same view as section 1.4, a day later: the subscription scope, dated 24/11/2026 to 26/11/2026 and filtered on the tag `project = buzzyhive`. The daily rows were also exported as a CSV, kept as [cost-analysis-2026-11-24-to-25.csv](evidence/cost-analysis-2026-11-24-to-25.csv).
+
+<img src="evidence/182-cost-analysis-project-tag-1-53-usd.png" alt="Cost analysis 24 to 26 November 2026 filtered on project buzzyhive: actual cost 1.53 US dollars, Virtual Network 1.03, Container Registry 0.26, Virtual Machines 0.13, Azure DNS 0.08, MySQL 0" style="border: 1px solid #d0d7de; border-radius: 6px;">
+*Figure 1.7. Cost analysis for the tag `project = buzzyhive`: US$1.53 actual, with Virtual Network the largest line. The account name is covered.*
+
+| Service | 24/11 | 25/11 | Total |
+|---|---|---|---|
+| Virtual Network | $0.50 | $0.54 | **$1.03** |
+| Container Registry | $0.14 | $0.12 | **$0.27** |
+| Virtual Machines | $0.13 | none | **$0.13** |
+| Azure DNS | $0.04 | $0.04 | **$0.08** |
+| Storage | $0.02 | under $0.01 | **$0.02** |
+| Key Vault | $0.01 | under $0.01 | **$0.01** |
+| MySQL, App Service, Monitor, Functions, IoT Hub, Log Analytics, Load Balancer, Bandwidth | $0 | $0 | **$0** |
+| **Day total** | **$0.83** | **$0.70** | **$1.53** |
+
+*Table 1.5. The CSV, summed by service and day (US dollars, rounded).*
+
+What it says:
+
+- **The measured cost of 24 and 25/11/2026 is US$1.53,** against an estimate of $50 to 70 a month. That is about $0.70 to 0.83 a day. It is not a clean daily rate: the lab was built, destroyed and rebuilt during those two days, so it ran for part of each. The order of magnitude is the useful result.
+- **The largest line is Virtual Network, $1.03.** That is what the two private endpoints bill as, which is consistent with the estimate of about $15 a month for them (about $0.50 a day). I did not break the line down by resource to prove it.
+- **Container Registry, $0.27,** matches the flat Basic rate of about $5 a month (about $0.17 a day) over the one and a half days it existed.
+- **MySQL shows $0.** The estimate had it as the largest item. I have not confirmed why. It is likely covered by the hours the free account includes for this server size, but the portal data I have does not say so, so treat it as unverified. A paid subscription would bill it, and the monthly estimate would then be closer to the one in section 1.1.
+- **The resource-group view** put `rg-hive-lab` at $1.33, the Container Apps managed group at $0.20 and `rg-hive-iac` under $0.01. I did not map the Virtual Machines line to a resource.
+
+What it does **not** cover:
+
+- **26/11/2026** (the third rebuild and the third teardown) was not in Cost Management yet. The chart ends on 25/11, so $1.53 is a lower bound for the project so far.
+- **Resources without the tag** `project = buzzyhive` are not in this figure. The three resource groups above are the project's, and the sibling project's resources are in other groups.
+- **The credit balance** after these days was not read, so I do not state a remaining figure.
+
 ## 2. How to check your own cost
 
 1. In the Azure Portal, open **Cost Management**, then **Cost analysis**.
@@ -114,3 +152,9 @@ Things changed by hand during the first run, outside Terraform:
 - **Registry admin user and the `AcrPush` role assignment.** Both live on the registry, so `terraform destroy` removes them with it. Turn the admin user off sooner if the lab stays up (`az acr update -n <registry> --admin-enabled false`). See [troubleshooting](troubleshooting.md#26-docker-login-to-the-registry-returns-unauthorized).
 - **Seeded database rows.** They live in MySQL and are deleted with it, so a new lab needs the migration and the seeder again (see [Deploy](deploy.md#46-seed-the-database)).
 - **State storage and the managed identity** are kept on purpose, because `bootstrap` and `foundation` are not destroyed after a session.
+
+---
+
+<!-- docs-nav:start -->
+**[← Previous: Troubleshooting](troubleshooting.md) | [Docs index](README.md) | [Next: Train the model in Azure ML →](azure-ml.md)**
+<!-- docs-nav:end -->

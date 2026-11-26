@@ -1,5 +1,9 @@
 # Docker images
 
+<!-- docs-nav:start -->
+**[← Previous: Architecture](architecture.md) | [Docs index](README.md) | [Next: Deploy, redeploy, and destroy →](deploy.md)**
+<!-- docs-nav:end -->
+
 This article explains why each choice in the two container images was made, with measurements, and how they run on Azure. The Docker files and the app's own requirements live in the [application repository](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readiness-Prediction) (`docs/docker/docker.md`), because they belong to the app. This repository only runs the result.
 
 > [!NOTE]
@@ -193,3 +197,9 @@ Both builds were fast because most layers were cached from the earlier local bui
 
 <img src="evidence/38-acr-repository-list.png" alt="az acr repository list returns flask-ml and laravel" style="border: 1px solid #d0d7de; border-radius: 6px;">
 *Figure 7.5. The registry now holds both repositories.*
+
+---
+
+<!-- docs-nav:start -->
+**[← Previous: Architecture](architecture.md) | [Docs index](README.md) | [Next: Deploy, redeploy, and destroy →](deploy.md)**
+<!-- docs-nav:end -->

@@ -1,5 +1,9 @@
 # Architecture
 
+<!-- docs-nav:start -->
+**[← Docs index](README.md) | [Next: Docker images →](docker.md)**
+<!-- docs-nav:end -->
+
 This article explains the resources this project plans to deploy and why each one exists. It hosts [BuzzyHive 2.0](https://github.com/tttaufiqqq/Kelulut-Hive-Harvest-Readiness-Prediction), which today runs on Exabytes shared hosting.
 
 ## 1. From shared hosting to containers
@@ -204,3 +208,9 @@ The portal's Resource visualizer draws the real resource graph of `rg-hive-lab`.
 *Figure 8.21. The remote state: `foundation.tfstate` and `lab.tfstate` in the `tfstate` container. `bootstrap` keeps its own state locally, as designed.*
 
 Edit the diagrams in [`architecture/architecture.drawio`](architecture/architecture.drawio) and export the PNGs again after any change.
+
+---
+
+<!-- docs-nav:start -->
+**[← Docs index](README.md) | [Next: Docker images →](docker.md)**
+<!-- docs-nav:end -->

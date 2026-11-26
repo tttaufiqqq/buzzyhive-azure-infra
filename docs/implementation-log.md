@@ -1,5 +1,9 @@
 # Implementation log
 
+<!-- docs-nav:start -->
+**[← Previous: Deploy, redeploy, and destroy](deploy.md) | [Docs index](README.md) | [Next: Troubleshooting →](troubleshooting.md)**
+<!-- docs-nav:end -->
+
 This log records how the infrastructure was planned, deployed, and fixed. It lists what happened, what failed, and why each decision was made.
 
 > [!NOTE]
@@ -146,7 +150,8 @@ The Function that forwards IoT Hub messages to Laravel was written, then hosted 
 - A reading sent after the rebuild was verified: 10 readings reached the database through the Function, each with a prediction from the retrained model.
 - The final teardown ran through `down-all.ps1` in 32.4 minutes, and a read-only check afterwards found nothing of the project in the subscription and no soft-deleted workspace of ours, which confirms the fix for entry 45.
 - A second redeploy tested the device-name step against Azure and found two more problems, both in how the Azure CLI receives an argument (49: `az.cmd` and a `)`, 50: the parser and a bare `-r`). After the fixes it worked: the first seeded node became `NODE-28ZRUR` and readings sent as that device reached the database.
-- Not done: the measured cost, because Cost analysis lags.
+- A third rebuild was meant to finish without a rerun and did not. Azure had no capacity for the MySQL server for a while (51), and the network dropped three times (a storage key request, the image push, DNS). Each rerun continued where the last stopped. After it, the first four readings sent to the new Function were lost (52).
+- Measured cost: US$1.53 for 24 and 25/11/2026 (tag `project = buzzyhive`), against an estimate of $50 to 70 a month. MySQL billed $0, and the reason is unverified. 26/11 was not in Cost Management yet.
 
 ## 4. Problems found before deployment
 
@@ -234,3 +239,9 @@ From the first apply:
 - **Be careful with screenshots.** Some of the terminal and editor captures in `evidence/` show an email address, subscription identifiers or secret values that were typed into `terraform.tfvars`. Check each one before it is committed.
 
 Symptom-to-fix reference for expected problems: [Troubleshooting](troubleshooting.md).
+
+---
+
+<!-- docs-nav:start -->
+**[← Previous: Deploy, redeploy, and destroy](deploy.md) | [Docs index](README.md) | [Next: Troubleshooting →](troubleshooting.md)**
+<!-- docs-nav:end -->

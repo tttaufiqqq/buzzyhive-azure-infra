@@ -1,5 +1,9 @@
 # Load test with k6
 
+<!-- docs-nav:start -->
+**[← Previous: Train the model in Azure ML](azure-ml.md) | [Docs index](README.md) | [Next: Teardown and redeploy →](teardown-and-redeploy.md)**
+<!-- docs-nav:end -->
+
 This article records the k6 ingest test run against the lab on 24/11/2026: what was sent, what failed, what the logs showed, what was changed, and what is still unknown.
 
 > [!NOTE]
@@ -186,3 +190,9 @@ The retry and the image built from it were deployed under the tag `300b276-deadl
 See [`loadtest/README.md`](../loadtest/README.md). Set `K6_INCLUDE_SYSTEM_ENV_VARS=true` first, because k6 2.x ignores shell variables otherwise, and pass the key through an environment variable, never `-e`. Run the smoke profile before the ramp.
 
 Related troubleshooting entries: [34](troubleshooting.md#34-a-short-stall-restarts-laravel-web-the-default-1-second-liveness-probe) and [35](troubleshooting.md#35-under-load-predictions-fail-to-save-a-mysql-deadlock-in-the-predictions-trigger).
+
+---
+
+<!-- docs-nav:start -->
+**[← Previous: Train the model in Azure ML](azure-ml.md) | [Docs index](README.md) | [Next: Teardown and redeploy →](teardown-and-redeploy.md)**
+<!-- docs-nav:end -->

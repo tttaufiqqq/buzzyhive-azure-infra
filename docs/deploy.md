@@ -1,5 +1,9 @@
 # Deploy, redeploy, and destroy
 
+<!-- docs-nav:start -->
+**[← Previous: Docker images](docker.md) | [Docs index](README.md) | [Next: Implementation log →](implementation-log.md)**
+<!-- docs-nav:end -->
+
 > **Short way:** `scripts/up-all.ps1 -Seed` builds everything from empty and `scripts/down-all.ps1` removes everything. They need the git-ignored tfvars files and `scripts/local.settings.json`. The steps below are what they do, one root at a time. See [Teardown and redeploy](teardown-and-redeploy.md).
 
 This article shows the steps to deploy the infrastructure, change it, and delete it, with what happened when they were run on 24/11/2026.
@@ -361,3 +365,9 @@ cd lab && terraform destroy
 ```
 
 If locks were ever enabled, set `enable_locks = false` and apply `foundation` first, or the destroy fails. When you are completely done, destroy `foundation`, then `bootstrap`, in that order, after deleting anything Terraform did not create (such as the registry Azure ML makes). See [Teardown and redeploy](teardown-and-redeploy.md) and [Cost and teardown](cost-and-teardown.md).
+
+---
+
+<!-- docs-nav:start -->
+**[← Previous: Docker images](docker.md) | [Docs index](README.md) | [Next: Implementation log →](implementation-log.md)**
+<!-- docs-nav:end -->
